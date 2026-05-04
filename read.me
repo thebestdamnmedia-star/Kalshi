@@ -1,1 +1,65 @@
-test
+# Kalshi Trading
+
+Standalone Kalshi BTC/ETH prediction market trading system. Independent of any other project — separate Vercel deploy, separate proxy, separate everything.
+
+## Project structure
+
+```
+kalshi-trading/
+├── api/
+│   ├── proxy.js      # CommonJS proxy: Kalshi (public + signed), Polygon, Upstash
+│   └── health.js     # Health check endpoint
+├── index.html        # Landing page
+└── README.md
+```
+
+No `package.json`. No `vercel.json`. CommonJS `module.exports` format means zero module-mode configuration needed.
+
+## Required Vercel env variables
+
+|Variable                  |Source                            |Purpose                                    |
+|--------------------------|----------------------------------|-------------------------------------------|
+|`KALSHI_KEY_ID`           |Kalshi dashboard → API Keys       |Identifier for your API key                |
+|`KALSHI_PRIVATE_KEY`      |Downloaded `.pem` file from Kalshi|Full PEM contents including BEGIN/END lines|
+|`POLYGON_API_KEY`         |polygon.io account                |For BTC/ETH price bars                     |
+|`UPSTASH_REDIS_REST_URL`  |upstash.com console               |Redis URL for persistence                  |
+|`UPSTASH_REDIS_REST_TOKEN`|upstash.com console               |Redis auth token                           |
+
+## After deploy, verify
+
+Visit `https://your-project.vercel.app/api/health` in a browser. Should see JSON like:
+
+```json
+{
+  "timestamp": "2026-05-04T...",
+  "node": "v20.x",
+  "env": {
+    "KALSHI_KEY_ID": true,
+    "KALSHI_PRIVATE_KEY": true,
+    "POLYGON_API_KEY": true,
+    "UPSTASH_REDIS_REST_URL": true,
+    "UPSTASH_REDIS_REST_TOKEN": true
+  },
+  "status": "alive"
+}
+```
+
+If any env var shows `false`, that variable is missing from Vercel.
+
+## Test Kalshi public endpoint
+
+In browser DevTools console on your deployed site:
+
+```javascript
+fetch('/api/proxy', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({_kalshi:true, url:'https://api.elections.kalshi.com/trade-api/v2/exchange/status'})}).then(r=>r.json()).then(console.log)
+```
+
+Should return `{exchange_active: true, ...}`.
+
+## Test Kalshi signed endpoint
+
+```javascript
+fetch('/api/proxy', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({_kalshi:true, signed:true, url:'https://api.elections.kalshi.com/trade-api/v2/portfolio/balance'})}).then(r=>r.json()).then(console.log)
+```
+
+Should return account balance JSON.
