@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Kalshi Test</title>
+<style>
+body{background:#0a0a14;color:#eee;font-family:monospace;padding:20px;font-size:13px;line-height:1.5}
+h2{color:#f7931a;font-size:14px;margin:16px 0 8px}
+.box{background:#16162a;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:12px;white-space:pre-wrap;word-wrap:break-word;overflow-x:auto;font-size:11px}
+.ok{border-left:3px solid #00e5aa}
+.err{border-left:3px solid #ff5f6d}
+.pending{border-left:3px solid #ffb340;color:#888}
+button{background:#f7931a;color:#000;border:none;padding:10px 20px;border-radius:6px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<h2>Kalshi Connection Test</h2>
+<button onclick="runTests()">Run Tests</button>
+
+<h2>Test 1: Kalshi public - exchange status</h2>
+<div id="t1" class="box pending">Click Run Tests above</div>
+
+<h2>Test 2: Kalshi signed - your account balance</h2>
+<div id="t2" class="box pending">Click Run Tests above</div>
+
+<h2>Test 3: Kalshi public - list BTC events</h2>
+<div id="t3" class="box pending">Click Run Tests above</div>
+
+<script>
+async function runTests() {
+  await test('t1', { _kalshi: true, url: 'https://api.elections.kalshi.com/trade-api/v2/exchange/status' });
+  await test('t2', { _kalshi: true, signed: true, url: 'https://api.elections.kalshi.com/trade-api/v2/portfolio/balance' });
+  await test('t3', { _kalshi: true, url: 'https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTC&status=open&limit=5' });
+}
+
+async function test(id, body) {
+  const el = document.getElementById(id);
+  el.className = 'box pending';
+  el.textContent = 'Running...';
+  try {
+    const r = await fetch('/api/proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    el.className = data.error ? 'box err' : 'box ok';
+    el.textContent = 'Status: ' + r.status + '\n\n' + JSON.stringify(data, null, 2);
+  } catch (e) {
+    el.className = 'box err';
+    el.textContent = 'Fetch error: ' + e.message;
+  }
+}
+</script>
+</body>
+</html>
