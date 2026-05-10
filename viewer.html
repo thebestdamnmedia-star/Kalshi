@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html>
 <head>
 <meta charset="UTF-8">
@@ -34,64 +33,63 @@ async function api(b){
 }
 
 async function triggerLog(){
-const out=document.getElementById(`out`);
-out.innerHTML=`<div class="card muted">Triggering...</div>`;
-try{
-const r=await fetch(`/api/logger`);
-const d=await r.json();
-out.innerHTML=`<div class="card"><div class="sec">Manual log result</div><pre>${JSON.stringify(d,null,2)}</pre></div>`;
-}catch(e){
-out.innerHTML=`<div class="card red">Error: ${e.message}</div>`;
-}
-setTimeout(run,1500);
+  const out=document.getElementById(`out`);
+  out.innerHTML=`<div class="card muted">Triggering...</div>`;
+  try{
+    const r=await fetch(`/api/logger`);
+    const d=await r.json();
+    out.innerHTML=`<div class="card"><div class="sec">Manual log result</div><pre>${JSON.stringify(d,null,2)}</pre></div>`;
+  }catch(e){
+    out.innerHTML=`<div class="card red">Error: ${e.message}</div>`;
+  }
+  setTimeout(run,1500);
 }
 
 async function run(){
-const out=document.getElementById(`out`);
-let html=``;
-
-const idx=await api({_storage:true,action:`get`,key:`ladder:index`});
-const indexArr=idx.result?JSON.parse(idx.result):[];
-
-const latest=await api({_storage:true,action:`get`,key:`ladder:latest`});
-const latestSnap=latest.result?JSON.parse(latest.result):null;
-
-html+=`<div class="card">`;
-html+=`<div class="sec">Logger Status</div>`;
-html+=`<div class="row"><span class="label">Snapshots in index:</span><span class="val">${indexArr.length}</span></div>`;
-
-if(latestSnap){
-const age=Math.round((Date.now()-new Date(latestSnap.ts).getTime())/1000);
-const ageCls=age<120?`green`:age<600?`amber`:`red`;
-html+=`<div class="row"><span class="label">Latest snapshot:</span><span class="val ${ageCls}">${age}s ago</span></div>`;
-html+=`<div class="row"><span class="label">BTC at snapshot:</span><span class="val amber">$${(latestSnap.btc_spot||0).toLocaleString()}</span></div>`;
-html+=`<div class="row"><span class="label">Events captured:</span><span class="val">${latestSnap.event_count}</span></div>`;
-const totalStrikes=(latestSnap.events||[]).reduce((s,e)=>s+e.strike_count,0);
-html+=`<div class="row"><span class="label">Total strikes:</span><span class="val">${totalStrikes}</span></div>`;
-if(latestSnap.errors && latestSnap.errors.length){
-html+=`<div class="row red">Errors: ${latestSnap.errors.join(`, `)}</div>`;
-}
-}else{
-html+=`<div class="muted">No snapshots yet. Tap Trigger Manual Log.</div>`;
-}
-html+=`</div>`;
-
-if(latestSnap && latestSnap.events && latestSnap.events.length){
-html+=`<div class="card"><div class="sec">Events in latest snapshot</div>`;
-for(const e of latestSnap.events){
-html+=`<div style="padding:6px 0;border-bottom:1px solid #2a2a40">`;
-html+=`<div><span class="amber">${e.series}</span> ${e.ticker}</div>`;
-html+=`<div class="muted">${e.strike_count} strikes, resolves in ${e.mins_to_resolve}m</div>`;
-html+=`</div>`;
-}
-html+=`</div>`;
-}
-
-out.innerHTML=html;
+  const out=document.getElementById(`out`);
+  let html=``;
+  
+  const idx=await api({_storage:true,action:`get`,key:`ladder:index`});
+  const indexArr=idx.result?JSON.parse(idx.result):[];
+  
+  const latest=await api({_storage:true,action:`get`,key:`ladder:latest`});
+  const latestSnap=latest.result?JSON.parse(latest.result):null;
+  
+  html+=`<div class="card">`;
+  html+=`<div class="sec">Logger Status</div>`;
+  html+=`<div class="row"><span class="label">Snapshots in index:</span><span class="val">${indexArr.length}</span></div>`;
+  
+  if(latestSnap){
+    const age=Math.round((Date.now()-new Date(latestSnap.ts).getTime())/1000);
+    const ageCls=age<120?`green`:age<600?`amber`:`red`;
+    html+=`<div class="row"><span class="label">Latest snapshot:</span><span class="val ${ageCls}">${age}s ago</span></div>`;
+    html+=`<div class="row"><span class="label">BTC at snapshot:</span><span class="val amber">$${(latestSnap.btc_spot||0).toLocaleString()}</span></div>`;
+    html+=`<div class="row"><span class="label">Events captured:</span><span class="val">${latestSnap.event_count}</span></div>`;
+    const totalStrikes=(latestSnap.events||[]).reduce((s,e)=>s+e.strike_count,0);
+    html+=`<div class="row"><span class="label">Total strikes:</span><span class="val">${totalStrikes}</span></div>`;
+    if(latestSnap.errors && latestSnap.errors.length){
+      html+=`<div class="row red">Errors: ${latestSnap.errors.join(`, `)}</div>`;
+    }
+  }else{
+    html+=`<div class="muted">No snapshots yet. Tap Trigger Manual Log.</div>`;
+  }
+  html+=`</div>`;
+  
+  if(latestSnap && latestSnap.events && latestSnap.events.length){
+    html+=`<div class="card"><div class="sec">Events in latest snapshot</div>`;
+    for(const e of latestSnap.events){
+      html+=`<div style="padding:6px 0;border-bottom:1px solid #2a2a40">`;
+      html+=`<div><span class="amber">${e.series}</span> ${e.ticker}</div>`;
+      html+=`<div class="muted">${e.strike_count} strikes, resolves in ${e.mins_to_resolve}m</div>`;
+      html+=`</div>`;
+    }
+    html+=`</div>`;
+  }
+  
+  out.innerHTML=html;
 }
 run();
 setInterval(run,30000);
 </script>
-
 </body>
 </html>
