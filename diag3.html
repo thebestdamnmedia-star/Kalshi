@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html>
 <head>
 <meta charset="UTF-8">
@@ -31,86 +30,77 @@ async function run(){
   const out=document.getElementById('out');
   out.innerHTML='<div class="card muted">Loading...</div>';
   let html='';
-
-const now=Date.now();
-const series=[‘KXBTC15M’,‘KXBTCD’,‘KXBTC’,‘BTCD’];
-
-for(const s of series){
-const evts=await api({_kalshi:true,url:‘https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=’+s+’&status=open&limit=20’});
-html+=’<div class="card"><div class="sec">’+s+’ open events</div>’;
-if(evts.error){
-html+=’<pre>Error: ‘+JSON.stringify(evts).slice(0,300)+’</pre>’;
-}else{
-const list=evts.events||[];
-html+=’<div>Returned ‘+list.length+’ events</div>’;
-
-```
-  const enriched=list.map(e=>{
-    const sd=e.strike_date?new Date(e.strike_date):null;
-    const minsToResolve=sd?Math.round((sd.getTime()-now)/60000):null;
-    return {ticker:e.event_ticker,sd:e.strike_date,mins:minsToResolve,title:(e.title||'').slice(0,40)};
-  }).sort((a,b)=>(a.mins||999999)-(b.mins||999999));
   
-  const nearTerm=enriched.filter(e=>e.mins!==null && e.mins>0 && e.mins<=120);
-  html+='<div class="green">Near-term (next 2hr): '+nearTerm.length+'</div>';
+  const now=Date.now();
+  const series=['KXBTC15M','KXBTCD','KXBTC','BTCD'];
   
-  if(enriched.length){
-    html+='<table class="tbl"><thead><tr><th>Event</th><th>Resolves</th><th>Mins</th></tr></thead><tbody>';
-    for(const e of enriched.slice(0,8)){
-      const cls=e.mins!==null && e.mins>0 && e.mins<=120?'green':'';
-      html+='<tr><td class="'+cls+'">'+e.ticker+'</td><td>'+(e.sd||'-').slice(0,16)+'</td><td>'+(e.mins!==null?e.mins+'m':'?')+'</td></tr>';
+  for(const s of series){
+    const evts=await api({_kalshi:true,url:'https://api.elections.kalshi.com/trade-api/v2/events?series_ticker='+s+'&status=open&limit=20'});
+    html+='<div class="card"><div class="sec">'+s+' open events</div>';
+    if(evts.error){
+      html+='<pre>Error: '+JSON.stringify(evts).slice(0,300)+'</pre>';
+    }else{
+      const list=evts.events||[];
+      html+='<div>Returned '+list.length+' events</div>';
+      
+      const enriched=list.map(e=>{
+        const sd=e.strike_date?new Date(e.strike_date):null;
+        const minsToResolve=sd?Math.round((sd.getTime()-now)/60000):null;
+        return {ticker:e.event_ticker,sd:e.strike_date,mins:minsToResolve,title:(e.title||'').slice(0,40)};
+      }).sort((a,b)=>(a.mins||999999)-(b.mins||999999));
+      
+      const nearTerm=enriched.filter(e=>e.mins!==null && e.mins>0 && e.mins<=120);
+      html+='<div class="green">Near-term (next 2hr): '+nearTerm.length+'</div>';
+      
+      if(enriched.length){
+        html+='<table class="tbl"><thead><tr><th>Event</th><th>Resolves</th><th>Mins</th></tr></thead><tbody>';
+        for(const e of enriched.slice(0,8)){
+          const cls=e.mins!==null && e.mins>0 && e.mins<=120?'green':'';
+          html+='<tr><td class="'+cls+'">'+e.ticker+'</td><td>'+(e.sd||'-').slice(0,16)+'</td><td>'+(e.mins!==null?e.mins+'m':'?')+'</td></tr>';
+        }
+        html+='</tbody></table>';
+      }
     }
-    html+='</tbody></table>';
+    html+='</div>';
   }
-}
-html+='</div>';
-```
-
-}
-
-// Pull one near-term event ladder if found
-// Try KXBTC15M first
-const evts15=await api({_kalshi:true,url:‘https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTC15M&status=open&limit=20’});
-if(evts15.events && evts15.events.length){
-const sorted=evts15.events.map(e=>{
-const sd=e.strike_date?new Date(e.strike_date):null;
-return {e,mins:sd?Math.round((sd.getTime()-now)/60000):null};
-}).filter(x=>x.mins>0).sort((a,b)=>a.mins-b.mins);
-
-```
-if(sorted.length){
-  const target=sorted[0];
-  const ladder=await api({_kalshi:true,url:'https://api.elections.kalshi.com/trade-api/v2/events/'+target.e.event_ticker+'?with_nested_markets=true'});
-  const markets=(ladder.event && ladder.event.markets)||ladder.markets||[];
   
-  html+='<div class="card"><div class="sec">SAMPLE LADDER: '+target.e.event_ticker+' (resolves in '+target.mins+'m)</div>';
-  html+='<div>'+(target.e.title||'')+'</div>';
-  html+='<div class="muted">'+markets.length+' strikes</div>';
-  
-  if(markets.length){
-    html+='<table class="tbl"><thead><tr><th>Strike</th><th>YES bid</th><th>YES ask</th><th>NO bid</th><th>Vol</th><th>OI</th></tr></thead><tbody>';
-    for(const m of markets.slice(0,15)){
-      html+='<tr>';
-      html+='<td>'+(m.subtitle||m.yes_sub_title||'-').slice(0,20)+'</td>';
-      html+='<td>$'+(m.yes_bid_dollars||'0')+'</td>';
-      html+='<td class="amber">$'+(m.yes_ask_dollars||'0')+'</td>';
-      html+='<td>$'+(m.no_bid_dollars||'0')+'</td>';
-      html+='<td>'+(m.volume_fp||'0')+'</td>';
-      html+='<td>'+(m.open_interest_fp||'0')+'</td>';
-      html+='</tr>';
+  const evts15=await api({_kalshi:true,url:'https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTC15M&status=open&limit=20'});
+  if(evts15.events && evts15.events.length){
+    const sorted=evts15.events.map(e=>{
+      const sd=e.strike_date?new Date(e.strike_date):null;
+      return {e,mins:sd?Math.round((sd.getTime()-now)/60000):null};
+    }).filter(x=>x.mins>0).sort((a,b)=>a.mins-b.mins);
+    
+    if(sorted.length){
+      const target=sorted[0];
+      const ladder=await api({_kalshi:true,url:'https://api.elections.kalshi.com/trade-api/v2/events/'+target.e.event_ticker+'?with_nested_markets=true'});
+      const markets=(ladder.event && ladder.event.markets)||ladder.markets||[];
+      
+      html+='<div class="card"><div class="sec">SAMPLE LADDER: '+target.e.event_ticker+' (resolves in '+target.mins+'m)</div>';
+      html+='<div>'+(target.e.title||'')+'</div>';
+      html+='<div class="muted">'+markets.length+' strikes</div>';
+      
+      if(markets.length){
+        html+='<table class="tbl"><thead><tr><th>Strike</th><th>YES bid</th><th>YES ask</th><th>NO bid</th><th>Vol</th><th>OI</th></tr></thead><tbody>';
+        for(const m of markets.slice(0,15)){
+          html+='<tr>';
+          html+='<td>'+(m.subtitle||m.yes_sub_title||'-').slice(0,20)+'</td>';
+          html+='<td>$'+(m.yes_bid_dollars||'0')+'</td>';
+          html+='<td class="amber">$'+(m.yes_ask_dollars||'0')+'</td>';
+          html+='<td>$'+(m.no_bid_dollars||'0')+'</td>';
+          html+='<td>'+(m.volume_fp||'0')+'</td>';
+          html+='<td>'+(m.open_interest_fp||'0')+'</td>';
+          html+='</tr>';
+        }
+        html+='</tbody></table>';
+      }
+      html+='</div>';
     }
-    html+='</tbody></table>';
   }
-  html+='</div>';
-}
-```
-
-}
-
-out.innerHTML=html;
+  
+  out.innerHTML=html;
 }
 run();
 </script>
-
 </body>
 </html>
