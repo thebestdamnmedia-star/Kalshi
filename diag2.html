@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalshi Event Field Diagnostic</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a14;color:#eee;font-family:ui-monospace,monospace;padding:14px;font-size:11px;line-height:1.5;max-width:900px;margin:0 auto}
+h1{font-size:18px;color:#f7931a;margin-bottom:14px}
+.btn{background:#f7931a;color:#000;border:none;padding:11px 20px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;width:100%;margin-bottom:12px}
+.card{background:#16162a;border:1px solid #2a2a40;border-radius:8px;padding:12px;margin-bottom:10px}
+.sec{font-size:10px;color:#888;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid #2a2a40;padding-bottom:5px}
+pre{background:#0a0a14;padding:8px;border-radius:4px;font-size:10px;overflow-x:auto;color:#aaa;white-space:pre-wrap;word-wrap:break-word}
+.amber{color:#ffb340}
+.muted{color:#666}
+</style>
+</head>
+<body>
+<h1>Kalshi Event Field Diagnostic</h1>
+<button class="btn" onclick="run()">Run</button>
+<div id="out"></div>
+<script>
+async function api(b){const r=await fetch('/api/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return r.json()}
+async function run(){
+  const out=document.getElementById('out');
+  out.innerHTML='<div class="card muted">Loading...</div>';
+  let html='';
+  
+  const evts1=await api({_kalshi:true,url:'https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTC&status=open&limit=3'});
+  html+='<div class="card"><div class="sec">KXBTC events - full JSON of first</div>';
+  html+='<pre>'+JSON.stringify(evts1.events?evts1.events[0]:evts1,null,2)+'</pre>';
+  html+='</div>';
+  
+  const evts2=await api({_kalshi:true,url:'https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTCD&status=open&limit=3'});
+  html+='<div class="card"><div class="sec">KXBTCD events - full JSON of first</div>';
+  html+='<pre>'+JSON.stringify(evts2.events?evts2.events[0]:evts2,null,2)+'</pre>';
+  html+='</div>';
+  
+  if(evts1.events && evts1.events[0]){
+    const evt=evts1.events[0];
+    const ticker=evt.event_ticker;
+    const ladder=await api({_kalshi:true,url:'https://api.elections.kalshi.com/trade-api/v2/events/'+ticker+'?with_nested_markets=true'});
+    html+='<div class="card"><div class="sec">Full event detail with markets: '+ticker+'</div>';
+    html+='<pre>'+JSON.stringify(ladder,null,2).slice(0,3000)+'</pre>';
+    html+='<div class="muted">(truncated to 3000 chars)</div>';
+    html+='</div>';
+  }
+  
+  out.innerHTML=html;
+}
+run();
+</script>
+</body>
+</html>
