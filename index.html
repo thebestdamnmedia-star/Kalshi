@@ -60,7 +60,7 @@ async function checkHealth() {
     html += '</ul>';
     document.getElementById('health').innerHTML = html;
   } catch(e) {
-    document.getElementById('health').innerHTML = `<span class="status err">Health check failed: ${e.message}</span>`;
+    document.getElementById('health').innerHTML = `<span class="status err">Health check failed: ${e.message}</span>`;  
   }
 }
 checkHealth();
