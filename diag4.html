@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KXBTCD Hourly Ladder Test</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a14;color:#eee;font-family:ui-monospace,monospace;padding:14px;font-size:11px;line-height:1.5;max-width:900px;margin:0 auto}
+h1{font-size:18px;color:#f7931a;margin-bottom:14px}
+.btn{background:#f7931a;color:#000;border:none;padding:11px 20px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;width:100%;margin-bottom:12px}
+.card{background:#16162a;border:1px solid #2a2a40;border-radius:8px;padding:12px;margin-bottom:10px}
+.sec{font-size:10px;color:#888;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid #2a2a40;padding-bottom:5px}
+.tbl{width:100%;border-collapse:collapse;font-size:10px}
+.tbl th{text-align:left;padding:5px 6px;background:#0d0d18;color:#888;font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.05em}
+.tbl td{padding:5px 6px;border-bottom:1px solid #1a1a28;font-family:monospace}
+.tbl tr.atm{background:rgba(247,147,26,0.1)}
+.tbl tr.itm{background:rgba(0,229,170,0.04)}
+.muted{color:#666}
+.amber{color:#ffb340}
+.green{color:#00e5aa}
+.red{color:#ff5f6d}
+.spread-tight{color:#00e5aa}
+.spread-med{color:#ffb340}
+.spread-wide{color:#ff5f6d}
+.event-title{font-size:13px;color:#fff;font-weight:600;margin-bottom:2px}
+.spot{font-size:20px;font-weight:600;color:#f7931a}
+</style>
+</head>
+<body>
+<h1>KXBTCD Hourly Ladder Test</h1>
+<button class="btn" onclick="run()">Load Soonest Hourly Event</button>
+<div id="out"></div>
+<script>
+async function api(b){const r=await fetch('/api/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return r.json()}
+async function run(){
+  const out=document.getElementById('out');
+  out.innerHTML='<div class="card muted">Loading...</div>';
+  let html='';
+  
+  const polyEnd=Math.floor(Date.now()/1000);
+  const polyStart=polyEnd-5*60;
+  const fmt=ts=>new Date(ts*1000).toISOString().slice(0,10);
+  const polyData=await api({_polygon:true,url:'https://api.polygon.io/v2/aggs/ticker/X:BTCUSD/range/1/minute/'+fmt(polyStart)+'/'+fmt(polyEnd)+'?adjusted=true&sort=desc&limit=1'});
+  const spot=polyData.results && polyData.results[0]?polyData.results[0].c:null;
+  
+  const evts=await api({_kalshi:true,url:'https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTCD&status=open&limit=20'});
+  const list=evts.events||[];
+  const now=Date.now();
+  const sorted=list.map(e=>({e,mins:e.strike_date?Math.round((new Date(e.strike_date).getTime()-now)/60000):null})).filter(x=>x.mins!==null && x.mins>0).sort((a,b)=>a.mins-b.mins);
+  
+  if(!sorted.length){
+    html+='<div class="card">No upcoming KXBTCD events</div>';
+    out.innerHTML=html;
+    return;
+  }
+  
+  const target=sorted[0];
+  const evt=target.e;
+  const ladder=await api({_kalshi:true,url:'https://api.elections.kalshi.com/trade-api/v2/events/'+evt.event_ticker+'?with_nested_markets=true'});
+  const markets=(ladder.event && ladder.event.markets)||ladder.markets||[];
+  
+  html+='<div class="card">';
+  html+='<div class="sec">BTC Spot</div>';
+  html+='<div class="spot">'+(spot?'$'+spot.toLocaleString():'-')+'</div>';
+  html+='</div>';
+  
+  html+='<div class="card">';
+  html+='<div class="event-title">'+(evt.title||'-')+'</div>';
+  html+='<div class="muted">'+evt.event_ticker+' - resolves in '+target.mins+' min - '+markets.length+' strikes</div>';
+  html+='<div class="muted" style="margin-top:4px">'+(evt.sub_title||'')+'</div>';
+  html+='</div>';
+  
+  const enriched=markets.map(m=>{
+    let strike=null;
+    if(m.cap_strike) strike=m.cap_strike;
+    else if(m.ticker){
+      const match=m.ticker.match(/[BT](\d+)$/);
+      if(match) strike=parseInt(match[1]);
+    }
+    const yb=parseFloat(m.yes_bid_dollars||0);
+    const ya=parseFloat(m.yes_ask_dollars||0);
+    return {
+      ticker:m.ticker, strike, label:m.subtitle||m.yes_sub_title||'',
+      strikeType:m.strike_type, yesBid:yb, yesAsk:ya,
+      yesAskSize:parseFloat(m.yes_ask_size_fp||0),
+      volume:parseFloat(m.volume_fp||0), oi:parseFloat(m.open_interest_fp||0),
+      spread: ya-yb,
+      itm: spot && strike ? (m.strike_type==='less'?spot<strike:spot>=strike) : false
+    };
+  }).sort((a,b)=>(b.strike||0)-(a.strike||0));
+  
+  html+='<div class="card">';
+  html+='<div class="sec">Full ladder</div>';
+  html+='<table class="tbl">';
+  html+='<thead><tr><th>Strike</th><th>Type</th><th>YES bid</th><th>YES ask</th><th>Spread</th><th>Ask size</th><th>Vol</th><th>OI</th></tr></thead>';
+  html+='<tbody>';
+  for(const m of enriched){
+    const spreadCents=Math.round(m.spread*100);
+    const spreadCls=isNaN(spreadCents)?'muted':spreadCents<=3?'spread-tight':spreadCents<=8?'spread-med':'spread-wide';
+    const isAtm=spot && m.strike && Math.abs(m.strike-spot)<200;
+    const rowCls=isAtm?'atm':m.itm?'itm':'';
+    html+='<tr class="'+rowCls+'">';
+    html+='<td>'+(m.strike?'$'+m.strike.toLocaleString():m.label.slice(0,15))+'</td>';
+    html+='<td class="muted">'+(m.strikeType||'-').slice(0,5)+'</td>';
+    html+='<td>$'+m.yesBid.toFixed(2)+'</td>';
+    html+='<td class="amber">$'+m.yesAsk.toFixed(2)+'</td>';
+    html+='<td class="'+spreadCls+'">'+spreadCents+'c</td>';
+    html+='<td>'+Math.round(m.yesAskSize)+'</td>';
+    html+='<td>'+Math.round(m.volume)+'</td>';
+    html+='<td>'+Math.round(m.oi)+'</td>';
+    html+='</tr>';
+  }
+  html+='</tbody></table>';
+  html+='</div>';
+  
+  const tradable=enriched.filter(m=>m.yesAsk>0);
+  const tightSpread=tradable.filter(m=>m.spread<=0.03).length;
+  const cheapStrikes=tradable.filter(m=>m.yesAsk>=0.05 && m.yesAsk<=0.30).length;
+  const totalVol=enriched.reduce((s,m)=>s+m.volume,0);
+  const totalOi=enriched.reduce((s,m)=>s+m.oi,0);
+  
+  html+='<div class="card">';
+  html+='<div class="sec">Summary</div>';
+  html+='<table class="tbl"><tbody>';
+  html+='<tr><td>Total strikes</td><td>'+markets.length+'</td></tr>';
+  html+='<tr><td>Tradable</td><td>'+tradable.length+'</td></tr>';
+  html+='<tr><td>Tight spreads (3c or less)</td><td class="green">'+tightSpread+'</td></tr>';
+  html+='<tr><td>Cheap OTM (5-30c, conviction range)</td><td class="amber">'+cheapStrikes+'</td></tr>';
+  html+='<tr><td>Total volume</td><td>'+Math.round(totalVol)+'</td></tr>';
+  html+='<tr><td>Total OI</td><td>'+Math.round(totalOi)+'</td></tr>';
+  html+='</tbody></table>';
+  html+='</div>';
+  
+  out.innerHTML=html;
+}
+run();
+</script>
+</body>
+</html>
