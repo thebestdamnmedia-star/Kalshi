@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalshi BTC Ladder Viewer</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a14;color:#eee;font-family:ui-monospace,Menlo,Monaco,monospace;padding:14px;font-size:12px;line-height:1.5;max-width:900px;margin:0 auto}
+h1{font-size:18px;color:#f7931a;margin-bottom:4px}
+.sub{font-size:11px;color:#666;margin-bottom:14px}
+.btn{background:#f7931a;color:#000;border:none;padding:11px 20px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;font-family:inherit;margin-bottom:12px;width:100%}
+.btn:active{background:#ffb340}
+.card{background:#16162a;border:1px solid #2a2a40;border-radius:8px;padding:12px;margin-bottom:10px}
+.sec{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;border-bottom:1px solid #2a2a40;padding-bottom:5px}
+.row{display:flex;justify-content:space-between;padding:3px 0;font-size:11px}
+.label{color:#888}
+.val{font-weight:600}
+.green{color:#00e5aa}
+.red{color:#ff5f6d}
+.amber{color:#ffb340}
+.muted{color:#666}
+.tbl{width:100%;border-collapse:collapse;font-size:10px;margin-top:6px}
+.tbl th{text-align:left;padding:4px 5px;background:#0d0d18;color:#888;font-size:9px;border-bottom:1px solid #2a2a40;font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.tbl td{padding:4px 5px;border-bottom:1px solid #1a1a28;font-family:ui-monospace,monospace}
+.tbl tr.atm{background:rgba(247,147,26,0.08)}
+.spread-tight{color:#00e5aa}
+.spread-med{color:#ffb340}
+.spread-wide{color:#ff5f6d}
+.event-title{font-size:12px;color:#fff;font-weight:600;margin-bottom:2px}
+.event-meta{font-size:10px;color:#888;margin-bottom:8px}
+.err{background:rgba(255,95,109,0.1);border:1px solid #ff5f6d;border-radius:6px;padding:10px;color:#ff5f6d;font-size:11px;white-space:pre-wrap;word-wrap:break-word}
+.timestamp{font-size:10px;color:#666;text-align:right;margin-top:6px}
+.spot{font-size:24px;font-weight:600;color:#f7931a}
+.btc-row{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+.btc-meta{font-size:11px;color:#888}
+</style>
+</head>
+<body>
+<h1>Kalshi BTC Ladder Viewer</h1>
+<div class="sub">Single snapshot — manual refresh — see what real Kalshi ladder data looks like</div>
+
+<button class="btn" onclick="loadAll()">Refresh Snapshot</button>
+
+<div id="output"></div>
+
+<script>
+async function api(body) {
+  const r = await fetch('/api/proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+async function loadAll() {
+  const out = document.getElementById('output');
+  out.innerHTML = '<div class="card"><div class="muted">Loading...</div></div>';
+  
+  try {
+    // Step 1: Get current BTC spot from Polygon
+    const polyEnd = Math.floor(Date.now() / 1000);
+    const polyStart = polyEnd - 5 * 60;
+    const fmt = ts => new Date(ts * 1000).toISOString().slice(0, 10);
+    const polyUrl = 'https://api.polygon.io/v2/aggs/ticker/X:BTCUSD/range/1/minute/' + fmt(polyStart) + '/' + fmt(polyEnd) + '?adjusted=true&sort=desc&limit=1';
+    const polyData = await api({ _polygon: true, url: polyUrl });
+    const spot = polyData.results && polyData.results[0] ? polyData.results[0].c : null;
+    
+    // Step 2: Get all open BTC events
+    const events = await api({ _kalshi: true, url: 'https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTC&status=open&limit=10' });
+    
+    if (events.error) {
+      out.innerHTML = '<div class="err">Events fetch error:\n' + JSON.stringify(events, null, 2) + '</div>';
+      return;
+    }
+    
+    const eventList = events.events || [];
+    
+    // Filter to events resolving in next 3 hours
+    const now = Date.now();
+    const threeHoursOut = now + 3 * 3600 * 1000;
+    const active = eventList.filter(e => {
+      if (!e.close_time) return false;
+      const closeMs = new Date(e.close_time).getTime();
+      return closeMs > now && closeMs <= threeHoursOut;
+    }).sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
+    
+    let html = '';
+    
+    // BTC spot header
+    html += '<div class="card">';
+    html += '<div class="sec">BTC Spot (Polygon)</div>';
+    html += '<div class="btc-row"><span class="spot">' + (spot ? '$' + spot.toLocaleString() : '—') + '</span>';
+    html += '<span class="btc-meta">' + new Date().toLocaleTimeString() + '</span></div>';
+    html += '<div class="row"><span class="label">Active BTC events found:</span><span class="val">' + active.length + '</span></div>';
+    html += '<div class="row"><span class="label">Total open events:</span><span class="val">' + eventList.length + '</span></div>';
+    html += '</div>';
+    
+    if (active.length === 0) {
+      html += '<div class="card"><div class="muted">No active BTC hourly events in next 3 hours. May need to check series ticker or try again.</div></div>';
+      out.innerHTML = html;
+      return;
+    }
+    
+    // For each active event, fetch full ladder
+    for (const evt of active.slice(0, 3)) { // limit to 3 to be fast
+      const ladder = await api({ _kalshi: true, url: 'https://api.elections.kalshi.com/trade-api/v2/events/' + evt.event_ticker + '?with_nested_markets=true' });
+      
+      const event = ladder.event || {};
+      const markets = ladder.markets || event.markets || [];
+      
+      const minsToClose = Math.round((new Date(event.close_time || evt.close_time).getTime() - now) / 60000);
+      
+      html += '<div class="card">';
+      html += '<div class="event-title">' + (event.title || evt.title || '—') + '</div>';
+      html += '<div class="event-meta">' + (event.event_ticker || evt.event_ticker) + ' · resolves in ' + minsToClose + ' min · ' + markets.length + ' strikes</div>';
+      
+      if (markets.length === 0) {
+        html += '<div class="muted">No markets in this event</div>';
+      } else {
+        // Sort by strike (parse from yes_sub_title or from ticker)
+        const enriched = markets.map(m => {
+          // Try parse strike from ticker (KXBTC-...-T79500 → 79500)
+          let strike = null;
+          if (m.ticker) {
+            const match = m.ticker.match(/[BT](\d+)$/);
+            if (match) strike = parseInt(match[1]);
+          }
+          return {
+            ticker: m.ticker,
+            strike: strike,
+            label: m.yes_sub_title || m.subtitle || '',
+            yesBid: m.yes_bid_dollars ? parseFloat(m.yes_bid_dollars) : null,
+            yesAsk: m.yes_ask_dollars ? parseFloat(m.yes_ask_dollars) : null,
+            noBid: m.no_bid_dollars ? parseFloat(m.no_bid_dollars) : null,
+            noAsk: m.no_ask_dollars ? parseFloat(m.no_ask_dollars) : null,
+            volume: m.volume_fp ? parseFloat(m.volume_fp) : 0,
+            oi: m.open_interest_fp ? parseFloat(m.open_interest_fp) : 0,
+            status: m.status
+          };
+        }).sort((a, b) => (b.strike || 0) - (a.strike || 0));
+        
+        html += '<table class="tbl">';
+        html += '<thead><tr><th>Strike</th><th>YES bid</th><th>YES ask</th><th>Spread</th><th>Vol</th><th>OI</th></tr></thead>';
+        html += '<tbody>';
+        for (const m of enriched) {
+          const spread = (m.yesAsk !== null && m.yesBid !== null) ? (m.yesAsk - m.yesBid) : null;
+          const spreadCents = spread !== null ? Math.round(spread * 100) : null;
+          const spreadCls = spreadCents === null ? 'muted' : spreadCents <= 3 ? 'spread-tight' : spreadCents <= 8 ? 'spread-med' : 'spread-wide';
+          const isAtm = spot && m.strike && Math.abs(m.strike - spot) < 200;
+          const tradable = m.yesAsk !== null;
+          html += '<tr class="' + (isAtm ? 'atm' : '') + '">';
+          html += '<td>' + (m.strike ? '$' + m.strike.toLocaleString() : m.label) + '</td>';
+          html += '<td>' + (m.yesBid !== null ? '$' + m.yesBid.toFixed(2) : '<span class="muted">—</span>') + '</td>';
+          html += '<td>' + (m.yesAsk !== null ? '$' + m.yesAsk.toFixed(2) : '<span class="muted">—</span>') + '</td>';
+          html += '<td class="' + spreadCls + '">' + (spreadCents !== null ? spreadCents + '¢' : '—') + '</td>';
+          html += '<td>' + m.volume + '</td>';
+          html += '<td>' + m.oi + '</td>';
+          html += '</tr>';
+        }
+        html += '</tbody></table>';
+        
+        // Quick stats
+        const tradable = enriched.filter(m => m.yesAsk !== null);
+        const totalVol = enriched.reduce((s, m) => s + m.volume, 0);
+        const totalOi = enriched.reduce((s, m) => s + m.oi, 0);
+        const tightSpread = tradable.filter(m => (m.yesAsk - m.yesBid) <= 0.03).length;
+        html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #2a2a40">';
+        html += '<div class="row"><span class="label">Tradable strikes:</span><span class="val">' + tradable.length + ' / ' + markets.length + '</span></div>';
+        html += '<div class="row"><span class="label">Tight spreads (≤3¢):</span><span class="val">' + tightSpread + '</span></div>';
+        html += '<div class="row"><span class="label">Total volume:</span><span class="val">' + totalVol + '</span></div>';
+        html += '<div class="row"><span class="label">Total open interest:</span><span class="val">' + totalOi + '</span></div>';
+        html += '</div>';
+      }
+      
+      html += '</div>';
+    }
+    
+    html += '<div class="timestamp">Snapshot at ' + new Date().toISOString() + '</div>';
+    out.innerHTML = html;
+    
+  } catch (e) {
+    out.innerHTML = '<div class="err">Error: ' + e.message + '</div>';
+  }
+}
+
+// Auto-load on page open
+loadAll();
+</script>
+
+</body>
+</html>
