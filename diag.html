@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalshi BTC Series Diagnostic</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a14;color:#eee;font-family:ui-monospace,monospace;padding:14px;font-size:12px;line-height:1.5;max-width:900px;margin:0 auto}
+h1{font-size:18px;color:#f7931a;margin-bottom:14px}
+.btn{background:#f7931a;color:#000;border:none;padding:11px 20px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;width:100%;margin-bottom:12px}
+.card{background:#16162a;border:1px solid #2a2a40;border-radius:8px;padding:12px;margin-bottom:10px}
+.sec{font-size:10px;color:#888;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid #2a2a40;padding-bottom:5px}
+.tbl{width:100%;border-collapse:collapse;font-size:10px}
+.tbl th{text-align:left;padding:5px;background:#0d0d18;color:#888;font-size:9px;border-bottom:1px solid #2a2a40}
+.tbl td{padding:5px;border-bottom:1px solid #1a1a28;font-family:monospace;word-break:break-all}
+.muted{color:#666}
+.amber{color:#ffb340}
+pre{background:#0a0a14;padding:8px;border-radius:4px;font-size:10px;overflow-x:auto;color:#888;white-space:pre-wrap;word-wrap:break-word}
+</style>
+</head>
+<body>
+<h1>Kalshi BTC Diagnostic</h1>
+<button class="btn" onclick="run()">Run Diagnostic</button>
+<div id="out"></div>
+<script>
+async function api(body){const r=await fetch('/api/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return r.json()}
+async function run(){
+  const out=document.getElementById('out');
+  out.innerHTML='<div class="card muted">Loading...</div>';
+  let html='';
+  
+  const series=await api({_kalshi:true,url:'https://api.elections.kalshi.com/trade-api/v2/series?limit=200'});
+  html+='<div class="card"><div class="sec">All BTC-related series</div>';
+  if(series.error){html+='<pre>'+JSON.stringify(series,null,2)+'</pre>';}
+  else{
+    const btc=(series.series||[]).filter(s=>{
+      const t=(s.ticker||'').toUpperCase();
+      const ti=(s.title||'').toUpperCase();
+      return t.includes('BTC')||ti.includes('BITCOIN');
+    });
+    if(!btc.length){html+='<div class="muted">No BTC series found. Total series returned: '+(series.series||[]).length+'</div>';}
+    else{
+      html+='<table class="tbl"><thead><tr><th>Ticker</th><th>Title</th><th>Frequency</th></tr></thead><tbody>';
+      for(const s of btc){
+        html+='<tr><td class="amber">'+s.ticker+'</td><td>'+(s.title||'-')+'</td><td>'+(s.frequency||'-')+'</td></tr>';
+      }
+      html+='</tbody></table>';
+    }
+  }
+  html+='</div>';
+  
+  const candidates=['KXBTC','KXBTCD','KXBTCH','KXBTCY','KXBTC1H','BTCD','BTCH'];
+  for(const ticker of candidates){
+    const evts=await api({_kalshi:true,url:'https://api.elections.kalshi.com/trade-api/v2/events?series_ticker='+ticker+'&status=open&limit=10'});
+    html+='<div class="card"><div class="sec">Events for series_ticker='+ticker+'</div>';
+    if(evts.error){
+      html+='<pre>Error: '+(evts.message||JSON.stringify(evts))+'</pre>';
+    }else{
+      const list=evts.events||[];
+      html+='<div>Returned '+list.length+' events</div>';
+      if(list.length){
+        html+='<table class="tbl"><thead><tr><th>Event Ticker</th><th>Close Time</th></tr></thead><tbody>';
+        for(const e of list.slice(0,5)){
+          html+='<tr><td class="amber">'+(e.event_ticker||'-')+'</td><td>'+(e.close_time||'-')+'</td></tr>';
+        }
+        html+='</tbody></table>';
+      }
+    }
+    html+='</div>';
+  }
+  
+  out.innerHTML=html;
+}
+run();
+</script>
+</body>
+</html>
