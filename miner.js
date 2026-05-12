@@ -1,35 +1,9 @@
-try{
 async function proxy(body){const r=await fetch('/api/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return r.json();}
 function setStatus(msg){document.getElementById('status').textContent=msg;}
 function setProgress(msg){document.getElementById('loaded').textContent=msg;}
 function setBar(n,total){document.getElementById('bar').style.width=Math.round(n/total*100)+'%';}
-
-async function rebuildIndex(){
-setStatus('Rebuilding index...');
-const result=await proxy({_storage:true,action:'list',key:'ladder:*'});
-let keys=result.result;
-if(!keys||!Array.isArray(keys))return 0;
-const snapKeys=keys.filter(k=>k!=='ladder:index'&&k!=='ladder:latest');
-const timestamps=snapKeys.map(k=>k.replace('ladder:','')).sort();
-await proxy({_storage:true,action:'set',key:'ladder:index',value:timestamps});
-setStatus('Index rebuilt — '+timestamps.length+' snapshots');
-return timestamps.length;
-}
-
-async function loadAll(index){
-const toLoad=index.filter((_,i)=>i%2===0);
-setStatus('Loading '+toLoad.length+' snapshots...');
-const snaps=[];
-for(let i=0;i<toLoad.length;i++){
-const r=await proxy({_storage:true,action:'get',key:'ladder:'+toLoad[i]});
-if(r.result){try{snaps.push(JSON.parse(r.result));}catch{}}
-if(i%20===0){setProgress(i+' / '+toLoad.length);setBar(i,toLoad.length);}
-await new Promise(r=>setTimeout(r,15));
-}
-snaps.sort((a,b)=>new Date(a.ts)-new Date(b.ts));
-return snaps;
-}
-
+async function rebuildIndex(){setStatus('Rebuilding index...');const result=await proxy({_storage:true,action:'list',key:'ladder:*'});let keys=result.result;if(!keys||!Array.isArray(keys))return 0;const snapKeys=keys.filter(k=>k!=='ladder:index'&&k!=='ladder:latest');const timestamps=snapKeys.map(k=>k.replace('ladder:','')).sort();await proxy({_storage:true,action:'set',key:'ladder:index',value:timestamps});setStatus('Index rebuilt — '+timestamps.length+' snapshots');return timestamps.length;}
+async function loadAll(index){const toLoad=index.filter((_,i)=>i%2===0);setStatus('Loading '+toLoad.length+' snapshots...');const snaps=[];for(let i=0;i<toLoad.length;i++){const r=await proxy({_storage:true,action:'get',key:'ladder:'+toLoad[i]});if(r.result){try{snaps.push(JSON.parse(r.result));}catch(e){}}if(i%20===0){setProgress(i+' / '+toLoad.length);setBar(i,toLoad.length);}await new Promise(r=>setTimeout(r,15));}snaps.sort((a,b)=>new Date(a.ts)-new Date(b.ts));return snaps;}
 async function mine(){
 document.getElementById('results').innerHTML='';
 const count=await rebuildIndex();
@@ -75,9 +49,7 @@ btcBuckets[bucket].totalMove+=contractMove;
 if(contractMove>=0.05){
 btcBuckets[bucket].wins++;
 wins.push({ts:snap.ts.slice(11,19),idx:si,askBefore:askNow.toFixed(2),askAfter:askFuture.toFixed(2),move:contractMove.toFixed(3),btcDelta30s:btcDelta30s.toFixed(0),btcDelta10s:btcDelta10s.toFixed(0),btcFlat:btcFlat,mins:evt.mins_to_resolve,ticker:evt.ticker});
-if(btcFlat&&contractMove>=0.20){
-bigMoves.push({ts:snap.ts.slice(11,19),idx:si,askBefore:askNow.toFixed(2),askAfter:askFuture.toFixed(2),move:contractMove.toFixed(3),btcDelta30s:btcDelta30s.toFixed(0),btcDelta10s:btcDelta10s.toFixed(0),mins:evt.mins_to_resolve,ticker:evt.ticker});
-}
+if(btcFlat&&contractMove>=0.20){bigMoves.push({ts:snap.ts.slice(11,19),idx:si,askBefore:askNow.toFixed(2),askAfter:askFuture.toFixed(2),move:contractMove.toFixed(3),btcDelta30s:btcDelta30s.toFixed(0),btcDelta10s:btcDelta10s.toFixed(0),mins:evt.mins_to_resolve,ticker:evt.ticker});}
 }else if(contractMove<=-0.05){
 btcBuckets[bucket].losses++;
 losses.push({ts:snap.ts.slice(11,19),idx:si,askBefore:askNow.toFixed(2),askAfter:askFuture.toFixed(2),move:contractMove.toFixed(3),btcDelta30s:btcDelta30s.toFixed(0),btcDelta10s:btcDelta10s.toFixed(0),btcFlat:btcFlat,mins:evt.mins_to_resolve,ticker:evt.ticker});
@@ -117,8 +89,7 @@ html+='</tbody></table></div>';
 if(bigMoves.length){
 html+='<div class="card"><div class="sec">Big Moves (20c+) on Flat BTC</div>';
 html+='<table class="tbl"><thead><tr><th>Time</th><th>Ticker</th><th>Before</th><th>After</th><th>Move</th><th>BTC 30s</th><th>BTC 10s</th><th>Mins</th></tr></thead><tbody>';
-const sorted=bigMoves.sort((a,b)=>parseFloat(b.move)-parseFloat(a.move));
-for(const w of sorted){
+for(const w of bigMoves.sort((a,b)=>parseFloat(b.move)-parseFloat(a.move))){
 html+='<tr><td>'+w.ts+'</td><td>'+w.ticker+'</td><td>'+w.askBefore+'</td><td class="green">'+w.askAfter+'</td><td class="green">+'+w.move+'</td><td class="'+(parseFloat(w.btcDelta30s)>=0?'green':'red')+'">'+w.btcDelta30s+'</td><td class="'+(parseFloat(w.btcDelta10s)>=0?'green':'red')+'">'+w.btcDelta10s+'</td><td>'+w.mins+'</td></tr>';
 }
 html+='</tbody></table></div>';
@@ -126,8 +97,7 @@ html+='</tbody></table></div>';
 if(wins.length){
 html+='<div class="card"><div class="sec">Top +5c Moves</div>';
 html+='<table class="tbl"><thead><tr><th>Time</th><th>Ticker</th><th>Before</th><th>After</th><th>Move</th><th>BTC 30s</th><th>BTC 10s</th><th>Flat?</th><th>Mins</th></tr></thead><tbody>';
-const topWins=wins.sort((a,b)=>parseFloat(b.move)-parseFloat(a.move)).slice(0,30);
-for(const w of topWins){
+for(const w of wins.sort((a,b)=>parseFloat(b.move)-parseFloat(a.move)).slice(0,30)){
 html+='<tr><td>'+w.ts+'</td><td>'+w.ticker+'</td><td>'+w.askBefore+'</td><td class="green">'+w.askAfter+'</td><td class="green">+'+w.move+'</td><td class="'+(parseFloat(w.btcDelta30s)>=0?'green':'red')+'">'+w.btcDelta30s+'</td><td class="'+(parseFloat(w.btcDelta10s)>=0?'green':'red')+'">'+w.btcDelta10s+'</td><td class="'+(w.btcFlat?'amber':'muted')+'">'+(w.btcFlat?'YES':'no')+'</td><td>'+w.mins+'</td></tr>';
 }
 html+='</tbody></table></div>';
@@ -135,12 +105,10 @@ html+='</tbody></table></div>';
 if(losses.length){
 html+='<div class="card"><div class="sec">Top -5c Moves</div>';
 html+='<table class="tbl"><thead><tr><th>Time</th><th>Ticker</th><th>Before</th><th>After</th><th>Move</th><th>BTC 30s</th><th>BTC 10s</th><th>Flat?</th><th>Mins</th></tr></thead><tbody>';
-const topLosses=losses.sort((a,b)=>parseFloat(a.move)-parseFloat(b.move)).slice(0,30);
-for(const l of topLosses){
+for(const l of losses.sort((a,b)=>parseFloat(a.move)-parseFloat(b.move)).slice(0,30)){
 html+='<tr><td>'+l.ts+'</td><td>'+l.ticker+'</td><td>'+l.askBefore+'</td><td class="red">'+l.askAfter+'</td><td class="red">'+l.move+'</td><td class="'+(parseFloat(l.btcDelta30s)>=0?'green':'red')+'">'+l.btcDelta30s+'</td><td class="'+(parseFloat(l.btcDelta10s)>=0?'green':'red')+'">'+l.btcDelta10s+'</td><td class="'+(l.btcFlat?'amber':'muted')+'">'+(l.btcFlat?'YES':'no')+'</td><td>'+l.mins+'</td></tr>';
 }
 html+='</tbody></table></div>';
 }
 document.getElementById('results').innerHTML=html;
 }
-}catch(e){document.getElementById('status').textContent='JS ERROR: '+e.message;}
