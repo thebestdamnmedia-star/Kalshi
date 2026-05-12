@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Kalshi — Fair Value Calibrator</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a0f;--surface:#111118;--surface2:#18181f;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);--purple:#7c6ff7;--teal:#2dd4a0;--coral:#f87171;--amber:#fbbf24;--text:#e8e8f0;--muted:#6b6b80}
+body{background:var(--bg);color:var(--text);font-family:'Helvetica Neue',sans-serif;font-size:14px;padding:24px;max-width:1100px;margin:0 auto}
+h1{font-size:20px;font-weight:500;margin-bottom:4px}
+.sub{font-size:11px;color:var(--muted);font-family:'Courier New',monospace;margin-bottom:20px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:14px}
+.sec{font-size:10px;color:var(--muted);font-family:'Courier New',monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.btn{padding:12px 24px;border-radius:6px;border:none;font-size:14px;font-weight:500;cursor:pointer;width:100%;margin-top:6px;background:var(--amber);color:#000}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.prog-bar{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:8px}
+.prog-fill{height:100%;background:var(--amber);border-radius:2px;transition:width .3s;width:0}
+#log{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-family:'Courier New',monospace;font-size:11px;color:var(--muted);min-height:60px;max-height:160px;overflow-y:auto;white-space:pre-wrap;margin-top:10px}
+.ok{color:var(--teal)}.warn{color:var(--amber)}.err{color:var(--coral)}.info{color:var(--purple)}
+table{width:100%;border-collapse:collapse;font-family:'Courier New',monospace;font-size:11px;margin-top:8px}
+th{text-align:right;padding:6px 8px;background:var(--surface2);color:var(--muted);font-weight:500;border-bottom:1px solid var(--border)}
+th:first-child{text-align:left}
+td{padding:5px 8px;border-bottom:1px solid var(--border);text-align:right}
+td:first-child{text-align:left;color:var(--amber)}
+.green{color:var(--teal)}.red{color:var(--coral)}.amber{color:var(--amber)}.muted{color:var(--muted)}
+.heat-high{background:rgba(45,212,160,0.15)}
+.heat-mid{background:rgba(251,191,36,0.08)}
+.heat-low{background:rgba(248,113,113,0.08)}
+</style>
+</head>
+<body>
+<h1>Kalshi — Fair Value Calibrator</h1>
+<div class="sub">Reverse-engineers real market pricing from ladder data · outputs fair value table for backtester</div>
+
+<div class="card">
+<div class="sec">Controls</div>
+<button class="btn" id="runBtn" onclick="run()">Run Calibration</button>
+<div class="prog-bar"><div class="prog-fill" id="pf"></div></div>
+<div id="log"></div>
+</div>
+
+<div id="out" style="display:none">
+
+<div class="card">
+<div class="sec">Fair Value Table — Avg Market Ask by Distance from Spot & Time to Resolve</div>
+<div style="font-size:10px;color:var(--muted);font-family:'Courier New',monospace;margin-bottom:10px">
+Rows = distance from BTC spot (+ means spot above strike = YES favored). Cols = minutes to resolution.<br>
+Values = average market YES ask price. This IS the fair value baseline.
+</div>
+<div id="fvTable"></div>
+</div>
+
+<div class="card">
+<div class="sec">Observation Count Table — how many data points per bucket</div>
+<div id="countTable"></div>
+</div>
+
+<div class="card">
+<div class="sec">Key Insights</div>
+<div id="insights"></div>
+</div>
+
+<div class="card">
+<div class="sec">Exportable Fair Value JSON — paste into backtest.html</div>
+<textarea id="fvJson" style="width:100%;height:200px;background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:10px;font-family:'Courier New',monospace;font-size:10px;color:var(--teal);resize:vertical"></textarea>
+</div>
+
+</div>
+
+<script>
+const el=id=>document.getElementById(id);
+function lg(msg,cls='info'){const d=el('log');d.innerHTML+='<span class="'+cls+'">'+msg+'</span>\n';d.scrollTop=d.scrollHeight;}
+function prog(p){el('pf').style.width=p+'%';}
+
+async function proxy(body){
+const r=await fetch('/api/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+return r.json();
+}
+
+async function rebuildIndex(){
+const result=await proxy({_storage:true,action:'list',key:'ladder:*'});
+const keys=result.result;
+if(!keys||!Array.isArray(keys))return [];
+const snapKeys=keys.filter(k=>k!=='ladder:index'&&k!=='ladder:latest');
+const timestamps=snapKeys.map(k=>k.replace('ladder:','')).sort();
+await proxy({_storage:true,action:'set',key:'ladder:index',value:timestamps});
+return timestamps;
+}
+
+function parseStrike(ticker){
+const m=ticker.match(/-T(\d+(?:\.\d+)?)$/);
+return m?parseFloat(m[1]):null;
+}
+
+async function run(){
+const btn=el('runBtn');
+btn.disabled=true;
+el('log').innerHTML='';
+el('out').style.display='none';
+
+try{
+lg('Rebuilding index...','info');
+prog(5);
+const index=await rebuildIndex();
+lg('Index: '+index.length+' snapshots','ok');
+
+const toLoad=index.filter((_,i)=>i%2===0);
+lg('Loading '+toLoad.length+' snapshots...','info');
+const snaps=[];
+for(let i=0;i<toLoad.length;i++){
+const r=await proxy({_storage:true,action:'get',key:'ladder:'+toLoad[i]});
+if(r.result){try{snaps.push(JSON.parse(r.result));}catch(e){}}
+if(i%20===0)prog(5+Math.round(i/toLoad.length*55));
+await new Promise(r=>setTimeout(r,15));
+}
+snaps.sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+lg('Loaded '+snaps.length+' snapshots','ok');
+prog(60);
+
+// Distance buckets: how far is BTC spot above/below strike
+// Positive = spot above strike = YES more likely
+const distBuckets=[-1500,-1000,-750,-500,-400,-300,-200,-150,-100,-50,-25,0,25,50,100,150,200,300,400,500,750,1000,1500];
+
+// Time buckets: minutes to resolution
+const timeBuckets=[5,10,15,20,25,30,35,40,45,50,55,60];
+
+// Data structure: observations[distBucket][timeBucket] = array of YES ask prices
+const observations={};
+for(const d of distBuckets){
+observations[d]={};
+for(const t of timeBuckets){
+observations[d][t]=[];
+}
+}
+
+lg('Scanning all strikes across all snapshots...','info');
+let totalObs=0;
+
+for(let i=0;i<snaps.length;i++){
+const snap=snaps[i];
+if(!snap.btc_spot)continue;
+const btcSpot=snap.btc_spot;
+
+for(const evt of(snap.events||[])){
+if(evt.series!=='KXBTCD')continue;
+if(evt.mins_to_resolve<=0||evt.mins_to_resolve>65)continue;
+
+// Find closest time bucket
+const timeBucket=timeBuckets.reduce((prev,curr)=>Math.abs(curr-evt.mins_to_resolve)<Math.abs(prev-evt.mins_to_resolve)?curr:prev);
+
+for(const st of evt.strikes){
+if(!st||!st.t)continue;
+const strikePrice=parseStrike(st.t);
+if(!strikePrice)continue;
+
+const askYes=st.ya;
+if(askYes<=0||askYes>=1)continue;
+if(st.ybs===0&&st.yas===0)continue; // skip illiquid
+
+// Distance = spot - strike (positive = spot above = YES favored)
+const dist=btcSpot-strikePrice;
+
+// Find closest distance bucket
+const distBucket=distBuckets.reduce((prev,curr)=>Math.abs(curr-dist)<Math.abs(prev-dist)?curr:prev);
+
+if(observations[distBucket]&&observations[distBucket][timeBucket]){
+observations[distBucket][timeBucket].push(askYes);
+totalObs++;
+}
+}
+}
+if(i%50===0)prog(60+Math.round(i/snaps.length*30));
+}
+
+lg('Total observations: '+totalObs.toLocaleString(),'ok');
+prog(90);
+
+// Compute averages
+const fvTable={};
+const countTable={};
+for(const d of distBuckets){
+fvTable[d]={};
+countTable[d]={};
+for(const t of timeBuckets){
+const obs=observations[d][t];
+if(obs.length>=3){
+fvTable[d][t]=parseFloat((obs.reduce((s,v)=>s+v,0)/obs.length).toFixed(4));
+countTable[d][t]=obs.length;
+}else{
+fvTable[d][t]=null;
+countTable[d][t]=0;
+}
+}
+}
+
+// Render fair value table
+let fvHtml='<table><thead><tr><th>Dist (spot-strike)</th>';
+for(const t of timeBuckets)fvHtml+='<th>'+t+'m</th>';
+fvHtml+='</tr></thead><tbody>';
+
+for(const d of [...distBuckets].reverse()){
+fvHtml+='<tr><td>'+(d>=0?'+':'')+d+'</td>';
+for(const t of timeBuckets){
+const v=fvTable[d][t];
+const cnt=countTable[d][t];
+if(v===null){fvHtml+='<td class="muted">—</td>';continue;}
+const cls=v>=0.70?'heat-high':v>=0.40?'heat-mid':'heat-low';
+fvHtml+='<td class="'+cls+'">'+(v*100).toFixed(1)+'%</td>';
+}
+fvHtml+='</tr>';
+}
+fvHtml+='</tbody></table>';
+el('fvTable').innerHTML=fvHtml;
+
+// Render count table
+let cntHtml='<table><thead><tr><th>Dist (spot-strike)</th>';
+for(const t of timeBuckets)cntHtml+='<th>'+t+'m</th>';
+cntHtml+='</tr></thead><tbody>';
+for(const d of [...distBuckets].reverse()){
+cntHtml+='<tr><td>'+(d>=0?'+':'')+d+'</td>';
+for(const t of timeBuckets){
+const cnt=countTable[d][t];
+const cls=cnt>=100?'green':cnt>=20?'amber':'muted';
+cntHtml+='<td class="'+cls+'">'+cnt+'</td>';
+}
+cntHtml+='</tr>';
+}
+cntHtml+='</tbody></table>';
+el('countTable').innerHTML=cntHtml;
+
+// Key insights
+let insightHtml='<div style="font-family:\'Courier New\',monospace;font-size:11px;line-height:2">';
+
+// Find ATM pricing (dist ~0) at different times
+const atm=fvTable[0];
+insightHtml+='<div class="amber">ATM pricing (spot = strike):</div>';
+for(const t of timeBuckets){
+if(atm[t]!==null)insightHtml+='<div style="color:var(--muted)">  '+t+'min: '+(atm[t]*100).toFixed(1)+'% (n='+countTable[0][t]+')</div>';
+}
+
+// Find where market prices near 50%
+insightHtml+='<div class="amber" style="margin-top:10px">Where market prices closest to 50% (highest uncertainty):</div>';
+for(const t of [10,20,30,45,60]){
+let closest=null,closestDist=null,closestVal=null;
+for(const d of distBuckets){
+if(fvTable[d][t]===null)continue;
+const diff=Math.abs(fvTable[d][t]-0.50);
+if(closest===null||diff<closest){closest=diff;closestDist=d;closestVal=fvTable[d][t];}
+}
+if(closestDist!==null)insightHtml+='<div style="color:var(--muted)">  '+t+'min: dist '+(closestDist>=0?'+':'')+closestDist+' → '+(closestVal*100).toFixed(1)+'%</div>';
+}
+
+insightHtml+='</div>';
+el('insights').innerHTML=insightHtml;
+
+// Export JSON
+el('fvJson').value=JSON.stringify({generated:new Date().toISOString(),snapshots:snaps.length,totalObservations:totalObs,distBuckets,timeBuckets,fvTable,countTable},null,2);
+
+prog(100);
+el('out').style.display='block';
+lg('Calibration complete.','ok');
+
+}catch(e){
+lg('ERROR: '+e.message,'err');
+console.error(e);
+}
+btn.disabled=false;
+}
+</script>
+</body>
+</html>
