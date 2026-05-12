@@ -43,10 +43,7 @@ module.exports = async function handler(req, res) {
   }
   
   try {
-    const end = Math.floor(Date.now() / 1000);
-    const start = end - 15 * 60;
-    const fmt = ts => new Date(ts * 1000).toISOString().slice(0, 10);
-    const url = 'https://api.polygon.io/v2/aggs/ticker/X:BTCUSD/range/1/minute/' + fmt(start) + '/' + fmt(end) + '?adjusted=true&sort=desc&limit=1&apiKey=' + POLYGON_KEY;
+    const url = 'https://api.polygon.io/v2/aggs/ticker/X:BTCUSD/prev?adjusted=true&apiKey=' + POLYGON_KEY;
     const r = await fetch(url);
     const d = await r.json();
     if (d.results && d.results[0]) btc_spot = d.results[0].c;
