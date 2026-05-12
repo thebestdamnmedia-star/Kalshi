@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JS Diag</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a14;color:#eee;font-family:ui-monospace,monospace;padding:14px;font-size:12px}
+.card{background:#16162a;border:1px solid #2a2a40;border-radius:8px;padding:12px;margin-bottom:10px}
+.green{color:#00e5aa}
+.red{color:#ff5f6d}
+.amber{color:#ffb340}
+</style>
+</head>
+<body>
+<div class="card" id="out">Checking...</div>
+<script>
+var out = document.getElementById('out');
+var html = '';
+
+// Test 1: can JS run at all
+html += '<div class="green">JS running OK</div>';
+
+// Test 2: can we load miner.js
+var s = document.createElement('script');
+s.src = '/miner.js';
+s.onload = function(){
+  html += '<div class="green">miner.js loaded OK</div>';
+  if(typeof mine === 'function'){
+    html += '<div class="green">mine() function found</div>';
+  } else {
+    html += '<div class="red">mine() function NOT found — JS loaded but function missing</div>';
+  }
+  out.innerHTML = html;
+};
+s.onerror = function(){
+  html += '<div class="red">miner.js FAILED to load — file missing or syntax error</div>';
+  out.innerHTML = html;
+};
+document.head.appendChild(s);
+
+out.innerHTML = html;
+</script>
+</body>
+</html>
