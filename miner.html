@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalshi Miner</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a14;color:#eee;font-family:ui-monospace,monospace;padding:14px;font-size:12px;line-height:1.5;max-width:900px;margin:0 auto}
+h1{font-size:18px;color:#f7931a;margin-bottom:14px}
+.btn{background:#f7931a;color:#000;border:none;padding:11px 20px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;width:100%;margin-bottom:10px}
+.btn2{background:#2a2a40;color:#eee;border:none;padding:11px 20px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;width:100%;margin-bottom:10px}
+.card{background:#16162a;border:1px solid #2a2a40;border-radius:8px;padding:12px;margin-bottom:10px}
+.sec{font-size:10px;color:#888;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid #2a2a40;padding-bottom:5px}
+.row{display:flex;justify-content:space-between;padding:3px 0}
+.label{color:#888}
+.val{font-weight:600}
+.amber{color:#ffb340}
+.green{color:#00e5aa}
+.red{color:#ff5f6d}
+.muted{color:#555}
+.tbl{width:100%;border-collapse:collapse;font-size:10px;margin-top:6px}
+.tbl th{text-align:left;padding:4px 6px;background:#0d0d18;color:#888;font-size:9px}
+.tbl td{padding:4px 6px;border-bottom:1px solid #1a1a28}
+.progress{background:#0d0d18;border-radius:4px;height:8px;margin:8px 0}
+.progress-bar{background:#f7931a;height:8px;border-radius:4px;transition:width 0.3s}
+</style>
+</head>
+<body>
+<h1>Kalshi Miner</h1>
+
+<div class="card">
+<div class="sec">Controls</div>
+<button class="btn" onclick="runArb()">Mine Arb Opportunities (YES+NO &lt; $1.00)</button>
+<button class="btn" onclick="runLag()">Mine BTC Lag Patterns</button>
+<button class="btn" onclick="runStagnation()">Mine Stagnation Behavior</button>
+<button class="btn2" onclick="runAll()">Run All Three</button>
+</div>
+
+<div class="card">
+<div class="sec">Progress</div>
+<div class="row"><span class="label">Status:</span><span class="val" id="status">Idle</span></div>
+<div class="row"><span class="label">Snapshots loaded:</span><span class="val" id="loaded">0</span></div>
+<div class="row"><span class="label">Snapshots analyzed:</span><span class="val" id="analyzed">0</span></div>
+<div class="progress"><div class="progress-bar" id="bar" style="width:0%"></div></div>
+</div>
+
+<div id="results"></div>
+
+<script>
+async function proxy(body) {
+  const r = await fetch(`/api/proxy`, {
+    method: `POST`,
+    headers: {[`Content-Type`]: `application/json`},
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+async function getIndex() {
+  const d = await proxy({_storage: true, action: `get`, key: `ladder:index`});
+  try { return d.result ? JSON.parse(d.result) : []; }
+  catch { return []; }
+}
+
+async function getSnapshot(ts) {
+  const d = await proxy({_storage: true, action: `get`, key: `ladder:` + ts});
+  try { return d.result ? JSON.parse(d.result) : null; }
+  catch { return null; }
+}
+
+function setStatus(msg) { document.getElementById(`status`).textContent = msg; }
+function setLoaded(n) { document.getElementById(`loaded`).textContent = n; }
+function setAnalyzed(n, total) {
+  document.getElementById(`analyzed`).textContent = n + ` / ` + total;
+  document.getElementById(`bar`).style.width = Math.round(n/total*100) + `%`;
+}
+
+async function loadSnapshots(sampleSize) {
+  setStatus(`Loading index...`);
+  const index = await getIndex();
+  if (!index.length) { setStatus(`No snapshots found`); return []; }
+
+  const total = index.length;
+  const step = sampleSize ? Math.max(1, Math.floor(total / sampleSize)) : 1;
+  const toLoad = [];
+  for (let i = 0; i < total; i += step) toLoad.push(index[i]);
+
+  setStatus(`Loading ${toLoad.length} snapshots...`);
+  const snapshots = [];
+  for (let i = 0; i < toLoad.length; i++) {
+    const s = await getSnapshot(toLoad[i]);
+    if (s) snapshots.push(s);
+    setLoaded(snapshots.length);
+    if (i % 10 === 0) setAnalyzed(i, toLoad.length);
+    await new Promise(r => setTimeout(r, 20));
+  }
+  setStatus(`Loaded ${snapshots.length} snapshots`);
+  return snapshots;
+}
+
+async function runArb() {
+  document.getElementById(`results`).innerHTML = ``;
+  const snapshots = await loadSnapshots(500);
+  if (!snapshots.length) return;
+
+  setStatus(`Mining arb opportunities...`);
+  const arbEvents = [];
+  let totalChecked = 0;
+
+  for (let i = 0; i < snapshots.length; i++) {
+    const snap = snapshots[i];
+    setAnalyzed(i, snapshots.length);
+    for (const evt of (snap.events || [])) {
+      for (const st of (evt.strikes || [])) {
+        totalChecked++;
+        const sum = st.ya + st.na;
+        if (sum > 0 && sum < 0.99) {
+          arbEvents.push({
+            ts: snap.ts.slice(11,19),
+            btc: snap.btc_spot,
+            series: evt.series,
+            strike: st.s,
+            ya: st.ya,
+            na: st.na,
+            sum: sum,
+            profit: (1 - sum).toFixed(3),
+            mins: evt.mins_to_resolve
+          });
+        }
+      }
+    }
+  }
+
+  setStatus(`Done. ${arbEvents.length} arb opportunities found in ${totalChecked} strikes checked.`);
+
+  let html = `<div class="card">`;
+  html += `<div class="sec">ARB OPPORTUNITIES — YES ask + NO ask &lt; $1.00</div>`;
+  html += `<div class="row"><span class="label">Total strikes checked:</span><span class="val">${totalChecked.toLocaleString()}</span></div>`;
+  html += `<div class="row"><span class="label">Arb opportunities found:</span><span class="val green">${arbEvents.length}</span></div>`;
+  html += `<div class="row"><span class="label">Arb frequency:</span><span class="val amber">${(arbEvents.length/totalChecked*100).toFixed(3)}% of strikes</span></div>`;
+
+  if (arbEvents.length) {
+    const avgProfit = arbEvents.reduce((s,e) => s + parseFloat(e.profit), 0) / arbEvents.length;
+    const maxProfit = Math.max(...arbEvents.map(e => parseFloat(e.profit)));
+    html += `<div class="row"><span class="label">Avg profit per arb:</span><span class="val green">$${avgProfit.toFixed(3)}</span></div>`;
+    html += `<div class="row"><span class="label">Max profit per arb:</span><span class="val green">$${maxProfit.toFixed(3)}</span></div>`;
+    html += `<table class="tbl"><thead><tr><th>Time</th><th>Series</th><th>Strike</th><th>YES ask</th><th>NO ask</th><th>Sum</th><th>Profit</th><th>Mins left</th></tr></thead><tbody>`;
+    for (const a of arbEvents.slice(0, 50)) {
+      html += `<tr><td>${a.ts}</td><td>${a.series}</td><td>$${a.strike}</td><td>${a.ya}</td><td>${a.na}</td><td class="red">${a.sum.toFixed(3)}</td><td class="green">$${a.profit}</td><td>${a.mins}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+    if (arbEvents.length > 50) html += `<div class="muted" style="padding:6px">Showing first 50 of ${arbEvents.length}</div>`;
+  } else {
+    html += `<div class="muted" style="padding:8px 0">No arb opportunities found in this sample.</div>`;
+  }
+  html += `</div>`;
+  document.getElementById(`results`).innerHTML = html;
+}
+
+async function runLag() {
+  document.getElementById(`results`).innerHTML = ``;
+  const snapshots = await loadSnapshots(300);
+  if (!snapshots.length) return;
+
+  snapshots.sort((a,b) => new Date(a.ts) - new Date(b.ts));
+  setStatus(`Mining BTC lag patterns...`);
+
+  const lagEvents = [];
+  let pairsAnalyzed = 0;
+
+  for (let i = 1; i < snapshots.length; i++) {
+    const prev = snapshots[i-1];
+    const curr = snapshots[i];
+    setAnalyzed(i, snapshots.length);
+
+    if (!prev.btc_spot || !curr.btc_spot) continue;
+    const btcDelta = curr.btc_spot - prev.btc_spot;
+    if (Math.abs(btcDelta) < 10) continue;
+
+    const secsBetween = (new Date(curr.ts) - new Date(prev.ts)) / 1000;
+    if (secsBetween > 120) continue;
+
+    for (const evt of (curr.events || [])) {
+      const prevEvt = (prev.events || []).find(e => e.ticker === evt.ticker);
+      if (!prevEvt) continue;
+
+      for (const st of evt.strikes) {
+        const prevSt = prevEvt.strikes.find(s => s.s === st.s);
+        if (!prevSt) continue;
+
+        const contractDelta = st.ya - prevSt.ya;
+        const expectedDir = btcDelta > 0 ? -1 : 1;
+        const actualDir = contractDelta > 0 ? 1 : contractDelta < 0 ? -1 : 0;
+        const lagged = actualDir === 0 && Math.abs(btcDelta) > 20;
+
+        if (lagged) {
+          lagEvents.push({
+            ts: curr.ts.slice(11,19),
+            btcDelta: btcDelta.toFixed(0),
+            strike: st.s,
+            series: evt.series,
+            prevAsk: prevSt.ya,
+            currAsk: st.ya,
+            contractDelta: contractDelta.toFixed(3),
+            mins: evt.mins_to_resolve,
+            secs: secsBetween
+          });
+        }
+        pairsAnalyzed++;
+      }
+    }
+  }
+
+  setStatus(`Done. ${lagEvents.length} lag events found across ${pairsAnalyzed} strike pairs.`);
+
+  let html = `<div class="card">`;
+  html += `<div class="sec">BTC LAG PATTERNS — contract didn't reprice after BTC moved $20+</div>`;
+  html += `<div class="row"><span class="label">Strike pairs analyzed:</span><span class="val">${pairsAnalyzed.toLocaleString()}</span></div>`;
+  html += `<div class="row"><span class="label">Lag events found:</span><span class="val amber">${lagEvents.length}</span></div>`;
+  html += `<div class="row"><span class="label">Lag frequency:</span><span class="val amber">${(lagEvents.length/pairsAnalyzed*100).toFixed(3)}% of strike pairs</span></div>`;
+
+  if (lagEvents.length) {
+    html += `<table class="tbl"><thead><tr><th>Time</th><th>Series</th><th>Strike</th><th>BTC Δ</th><th>Prev ask</th><th>Curr ask</th><th>Ct Δ</th><th>Mins left</th></tr></thead><tbody>`;
+    for (const l of lagEvents.slice(0, 50)) {
+      const dir = parseFloat(l.btcDelta) > 0 ? `+` : ``;
+      html += `<tr><td>${l.ts}</td><td>${l.series}</td><td>$${l.strike}</td><td class="${parseFloat(l.btcDelta)>0?`green`:`red`}">${dir}${l.btcDelta}</td><td>${l.prevAsk}</td><td>${l.currAsk}</td><td>${l.contractDelta}</td><td>${l.mins}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+    if (lagEvents.length > 50) html += `<div class="muted" style="padding:6px">Showing first 50 of ${lagEvents.length}</div>`;
+  }
+  html += `</div>`;
+  document.getElementById(`results`).innerHTML += html;
+}
+
+async function runStagnation() {
+  document.getElementById(`results`).innerHTML = ``;
+  const snapshots = await loadSnapshots(300);
+  if (!snapshots.length) return;
+
+  snapshots.sort((a,b) => new Date(a.ts) - new Date(b.ts));
+  setStatus(`Mining stagnation behavior...`);
+
+  const stagnationPeriods = [];
+  let currentFlat = [];
+
+  for (let i = 1; i < snapshots.length; i++) {
+    const prev = snapshots[i-1];
+    const curr = snapshots[i];
+    setAnalyzed(i, snapshots.length);
+
+    if (!prev.btc_spot || !curr.btc_spot) continue;
+    const btcDelta = Math.abs(curr.btc_spot - prev.btc_spot);
+    const secsBetween = (new Date(curr.ts) - new Date(prev.ts)) / 1000;
+    if (secsBetween > 120) { currentFlat = []; continue; }
+
+    if (btcDelta < 5) {
+      currentFlat.push(curr);
+    } else {
+      if (currentFlat.length >= 6) {
+        const drifts = [];
+        for (const snap of currentFlat) {
+          for (const evt of (snap.events || [])) {
+            for (const st of evt.strikes) {
+              if (st.ya > 0.05 && st.ya < 0.95) {
+                drifts.push({strike: st.s, ask: st.ya, series: evt.series, mins: evt.mins_to_resolve});
+              }
+            }
+          }
+        }
+        stagnationPeriods.push({
+          start: currentFlat[0].ts.slice(11,19),
+          end: currentFlat[currentFlat.length-1].ts.slice(11,19),
+          snapCount: currentFlat.length,
+          duration: Math.round(currentFlat.length * 10 / 60 * 10) / 10,
+          btcStart: currentFlat[0].btc_spot,
+          btcEnd: currentFlat[currentFlat.length-1].btc_spot,
+          sampleDrifts: drifts.length
+        });
+      }
+      currentFlat = [];
+    }
+  }
+
+  setStatus(`Done. Found ${stagnationPeriods.length} stagnation periods.`);
+
+  let html = `<div class="card">`;
+  html += `<div class="sec">STAGNATION PERIODS — BTC flat (&lt;$5 move) for 60+ seconds</div>`;
+  html += `<div class="row"><span class="label">Stagnation periods found:</span><span class="val amber">${stagnationPeriods.length}</span></div>`;
+
+  if (stagnationPeriods.length) {
+    const avgDuration = stagnationPeriods.reduce((s,p) => s + p.duration, 0) / stagnationPeriods.length;
+    html += `<div class="row"><span class="label">Avg duration:</span><span class="val">${avgDuration.toFixed(1)} min</span></div>`;
+    html += `<table class="tbl"><thead><tr><th>Start</th><th>End</th><th>Duration</th><th>BTC start</th><th>BTC end</th><th>Snaps</th></tr></thead><tbody>`;
+    for (const p of stagnationPeriods.slice(0, 50)) {
+      html += `<tr><td>${p.start}</td><td>${p.end}</td><td>${p.duration}m</td><td>$${p.btcStart}</td><td>$${p.btcEnd}</td><td>${p.snapCount}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+  } else {
+    html += `<div class="muted" style="padding:8px 0">No stagnation periods found in this sample.</div>`;
+  }
+  html += `</div>`;
+  document.getElementById(`results`).innerHTML += html;
+}
+
+async function runAll() {
+  document.getElementById(`results`).innerHTML = ``;
+  await runArb();
+  await runLag();
+  await runStagnation();
+}
+</script>
+</body>
+</html>
