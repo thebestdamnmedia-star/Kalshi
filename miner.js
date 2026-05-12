@@ -21,7 +21,16 @@ const losses=[];
 const largeOrders=[];
 const btcBuckets={};
 
-for(let i=3;i<snaps.length-5;i++){
+// Follow-through tracking buckets
+// For each large order event, track T+1,T+3,T+6,T+12 snapshots (~10,30,60,120 sec)
+const followThrough={
+  t10:{continued:0,reversed:0,flat:0,totalMove:0},
+  t30:{continued:0,reversed:0,flat:0,totalMove:0},
+  t60:{continued:0,reversed:0,flat:0,totalMove:0},
+  t120:{continued:0,reversed:0,flat:0,totalMove:0}
+};
+
+for(let i=3;i<snaps.length-13;i++){
 const snap=snaps[i];
 if(!snap.btc_spot)continue;
 const btc3=snaps[i-3].btc_spot;
@@ -30,11 +39,8 @@ const btcNow=snap.btc_spot;
 if(!btc3||!btc1)continue;
 const btcDelta30s=btcNow-btc3;
 const btcDelta10s=btcNow-btc1;
-
-// FILTER: skip bad BTC data (over $200 move in 30s is artifact)
 if(Math.abs(btcDelta30s)>200)continue;
 if(Math.abs(btcDelta10s)>200)continue;
-
 const bucket=Math.floor(btcDelta30s/20)*20;
 const btcFlat=Math.abs(btcDelta30s)<10;
 
@@ -64,8 +70,25 @@ if(contractMove>=0.05){
 btcBuckets[bucket].wins++;
 wins.push({ts:snap.ts.slice(11,19),idx:si,askBefore:askNow.toFixed(2),askAfter:askFuture.toFixed(2),move:contractMove.toFixed(3),btcDelta30s:btcDelta30s.toFixed(0),btcDelta10s:btcDelta10s.toFixed(0),btcFlat:btcFlat,mins:evt.mins_to_resolve,ticker:evt.ticker});
 
-// Large order pattern: big contract move, flat BTC, 15+ mins left
+// Large order: 20c+ move, flat BTC, 15+ mins
 if(btcFlat&&contractMove>=0.20&&evt.mins_to_resolve>=15){
+// Track follow-through at T+1,T+3,T+6,T+12 snapshots
+const offsets={t10:1,t30:3,t60:6,t120:12};
+for(const[key,offset]of Object.entries(offsets)){
+const fwdSnap=snaps[i+5+offset];
+if(!fwdSnap)continue;
+const fwdEvt=(fwdSnap.events||[]).find(e=>e.ticker===evt.ticker);
+if(!fwdEvt)continue;
+const fwdSt=fwdEvt.strikes[si];
+if(!fwdSt)continue;
+const fwdAsk=fwdSt.ya;
+const fwdMove=fwdAsk-askFuture;
+followThrough[key].totalMove+=fwdMove;
+if(fwdMove>0.02)followThrough[key].continued++;
+else if(fwdMove<-0.02)followThrough[key].reversed++;
+else followThrough[key].flat++;
+}
+
 largeOrders.push({ts:snap.ts.slice(11,19),idx:si,askBefore:askNow.toFixed(2),askAfter:askFuture.toFixed(2),move:contractMove.toFixed(3),btcDelta30s:btcDelta30s.toFixed(0),btcDelta10s:btcDelta10s.toFixed(0),mins:evt.mins_to_resolve,ticker:evt.ticker});
 }
 }else if(contractMove<=-0.05){
@@ -87,11 +110,36 @@ html+='<div class="card"><div class="sec">Summary</div>';
 html+='<div class="row"><span class="label">Snapshots analyzed:</span><span class="val">'+snaps.length+'</span></div>';
 html+='<div class="row"><span class="label">Contract +5c moves:</span><span class="val green">'+wins.length+'</span></div>';
 html+='<div class="row"><span class="label">Contract -5c moves:</span><span class="val red">'+losses.length+'</span></div>';
-html+='<div class="row"><span class="label">Large order events (20c+ flat BTC 15m+):</span><span class="val amber">'+largeOrders.length+'</span></div>';
+html+='<div class="row"><span class="label">Large order events:</span><span class="val amber">'+largeOrders.length+'</span></div>';
 html+='</div>';
 
+// FOLLOW THROUGH ANALYSIS
+html+='<div class="card"><div class="sec">Large Order Follow-Through Analysis</div>';
+html+='<div class="muted" style="padding:4px 0 8px">After a 20c+ move on flat BTC, what does the contract do next?</div>';
+html+='<table class="tbl"><thead><tr><th>Time after</th><th>Continued</th><th>Reversed</th><th>Flat</th><th>Total</th><th>Continue%</th><th>Reverse%</th><th>Avg next move</th></tr></thead><tbody>';
+const ftLabels={t10:'~10 sec',t30:'~30 sec',t60:'~60 sec',t120:'~120 sec'};
+for(const[key,label]of Object.entries(ftLabels)){
+const ft=followThrough[key];
+const total=ft.continued+ft.reversed+ft.flat;
+if(total===0)continue;
+const contPct=(ft.continued/total*100).toFixed(1);
+const revPct=(ft.reversed/total*100).toFixed(1);
+const avgMove=(ft.totalMove/total).toFixed(4);
+html+='<tr>';
+html+='<td class="amber">'+label+'</td>';
+html+='<td class="green">'+ft.continued+'</td>';
+html+='<td class="red">'+ft.reversed+'</td>';
+html+='<td class="muted">'+ft.flat+'</td>';
+html+='<td>'+total+'</td>';
+html+='<td class="'+(parseFloat(contPct)>40?'green':'muted')+'">'+contPct+'%</td>';
+html+='<td class="'+(parseFloat(revPct)>40?'red':'muted')+'">'+revPct+'%</td>';
+html+='<td class="amber">'+avgMove+'</td>';
+html+='</tr>';
+}
+html+='</tbody></table></div>';
+
 // BUCKET TABLE
-html+='<div class="card"><div class="sec">BTC 30s Move vs Contract Move (clean data only)</div>';
+html+='<div class="card"><div class="sec">BTC 30s Move vs Contract Move</div>';
 html+='<table class="tbl"><thead><tr><th>BTC 30s</th><th>+5c</th><th>-5c</th><th>Flat</th><th>Total</th><th>Up%</th><th>Down%</th><th>Avg move</th></tr></thead><tbody>';
 const sortedBuckets=Object.keys(btcBuckets).map(Number).sort((a,b)=>a-b);
 for(const b of sortedBuckets){
@@ -110,10 +158,9 @@ html+='<td class="amber">'+avgMove+'</td></tr>';
 }
 html+='</tbody></table></div>';
 
-// LARGE ORDER PATTERN
+// LARGE ORDER LIST
 if(largeOrders.length){
-html+='<div class="card"><div class="sec">Large Order Pattern — 20c+ Move, Flat BTC, 15m+ Left</div>';
-html+='<div class="muted" style="padding:4px 0 8px">These are contracts that repriced hard with no BTC catalyst. Likely large order hits. Frequency: '+largeOrders.length+' events in '+snaps.length+' snapshots = '+(largeOrders.length/snaps.length*6).toFixed(1)+' per hour.</div>';
+html+='<div class="card"><div class="sec">Large Order Events</div>';
 html+='<table class="tbl"><thead><tr><th>Time</th><th>Ticker</th><th>Before</th><th>After</th><th>Move</th><th>BTC 30s</th><th>BTC 10s</th><th>Mins</th></tr></thead><tbody>';
 for(const w of largeOrders.sort((a,b)=>parseFloat(b.move)-parseFloat(a.move))){
 html+='<tr><td>'+w.ts+'</td><td>'+w.ticker+'</td><td>'+w.askBefore+'</td><td class="green">'+w.askAfter+'</td><td class="green">+'+w.move+'</td><td class="'+(parseFloat(w.btcDelta30s)>=0?'green':'red')+'">'+w.btcDelta30s+'</td><td class="'+(parseFloat(w.btcDelta10s)>=0?'green':'red')+'">'+w.btcDelta10s+'</td><td>'+w.mins+'</td></tr>';
