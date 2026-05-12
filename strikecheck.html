@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strike Check</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a14;color:#eee;font-family:ui-monospace,monospace;padding:14px;font-size:12px}
+.card{background:#16162a;border:1px solid #2a2a40;border-radius:8px;padding:12px;margin-bottom:10px}
+.green{color:#00e5aa}
+.amber{color:#ffb340}
+pre{background:#0a0a14;padding:8px;border-radius:4px;font-size:10px;color:#aaa;white-space:pre-wrap;word-wrap:break-word;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="card" id="out">Loading...</div>
+<script>
+async function run(){
+const out=document.getElementById('out');
+const r=await fetch('/api/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_storage:true,action:'get',key:'ladder:latest'})});
+const d=await r.json();
+const snap=JSON.parse(d.result);
+const evt=snap.events[0];
+const strikes=evt.strikes;
+let html='<div class="amber">Event: '+evt.ticker+'</div>';
+html+='<div>BTC spot: <span class="green">$'+snap.btc_spot+'</span></div>';
+html+='<div style="margin-top:8px">First 5 strikes:</div>';
+html+='<pre>';
+for(let i=0;i<5;i++){
+const s=strikes[i];
+html+=JSON.stringify(s)+'\n';
+}
+html+='</pre>';
+html+='<div style="margin-top:8px">Middle 5 strikes (index 90-94):</div>';
+html+='<pre>';
+for(let i=90;i<95;i++){
+const s=strikes[i];
+html+=JSON.stringify(s)+'\n';
+}
+html+='</pre>';
+html+='<div style="margin-top:8px">Last 5 strikes:</div>';
+html+='<pre>';
+for(let i=strikes.length-5;i<strikes.length;i++){
+const s=strikes[i];
+html+=JSON.stringify(s)+'\n';
+}
+html+='</pre>';
+out.innerHTML=html;
+}
+run();
+</script>
+</body>
+</html>
