@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snapshot Diagnostic</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a14;color:#eee;font-family:ui-monospace,monospace;padding:14px;font-size:12px;line-height:1.5;max-width:900px;margin:0 auto}
+h1{font-size:18px;color:#f7931a;margin-bottom:14px}
+.btn{background:#f7931a;color:#000;border:none;padding:11px 20px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;width:100%;margin-bottom:10px}
+.card{background:#16162a;border:1px solid #2a2a40;border-radius:8px;padding:12px;margin-bottom:10px}
+.sec{font-size:10px;color:#888;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid #2a2a40;padding-bottom:5px}
+.row{display:flex;justify-content:space-between;padding:3px 0}
+.label{color:#888}
+.val{font-weight:600}
+.amber{color:#ffb340}
+.green{color:#00e5aa}
+.red{color:#ff5f6d}
+pre{background:#0a0a14;padding:8px;border-radius:4px;font-size:10px;color:#aaa;white-space:pre-wrap;word-wrap:break-word;margin-top:8px}
+</style>
+</head>
+<body>
+<h1>Snapshot Diagnostic</h1>
+<button class="btn" onclick="run()">Run Diagnostic</button>
+<div id="out"></div>
+<script>
+async function proxy(body) {
+  const r = await fetch(`/api/proxy`, {
+    method: `POST`,
+    headers: {[`Content-Type`]: `application/json`},
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+async function run() {
+  const out = document.getElementById(`out`);
+  out.innerHTML = `<div class="card">Loading...</div>`;
+  let html = ``;
+
+  // Get index
+  const idxData = await proxy({_storage: true, action: `get`, key: `ladder:index`});
+  const index = idxData.result ? JSON.parse(idxData.result) : [];
+  html += `<div class="card"><div class="sec">Index</div>`;
+  html += `<div class="row"><span class="label">Total snapshots in index:</span><span class="val green">${index.length}</span></div>`;
+  html += `<div class="row"><span class="label">Earliest:</span><span class="val">${index[0] ? index[0].slice(11,19) : 'none'}</span></div>`;
+  html += `<div class="row"><span class="label">Latest:</span><span class="val">${index[index.length-1] ? index[index.length-1].slice(11,19) : 'none'}</span></div>`;
+  html += `</div>`;
+
+  // Load 3 snapshots: index 100, 105, 110 (50 sec apart each)
+  const keys = [index[100], index[105], index[110]];
+  const snaps = [];
+  for (const k of keys) {
+    const r = await proxy({_storage: true, action: `get`, key: `ladder:` + k});
+    snaps.push(r.result ? JSON.parse(r.result) : null);
+  }
+
+  for (let i = 0; i < snaps.length; i++) {
+    const s = snaps[i];
+    html += `<div class="card"><div class="sec">Snapshot ${i+1} — ${keys[i] ? keys[i].slice(11,19) : 'missing'}</div>`;
+    if (!s) {
+      html += `<div class="red">Failed to load</div></div>`;
+      continue;
+    }
+    html += `<div class="row"><span class="label">BTC spot:</span><span class="val amber">${s.btc_spot}</span></div>`;
+    html += `<div class="row"><span class="label">Events:</span><span class="val">${s.events ? s.events.length : 0}</span></div>`;
+    if (s.events && s.events[0]) {
+      const evt = s.events[0];
+      html += `<div class="row"><span class="label">Event ticker:</span><span class="val">${evt.ticker}</span></div>`;
+      html += `<div class="row"><span class="label">Series:</span><span class="val">${evt.series}</span></div>`;
+      html += `<div class="row"><span class="label">Strikes count:</span><span class="val">${evt.strikes ? evt.strikes.length : 0}</span></div>`;
+      html += `<div class="row"><span class="label">Mins to resolve:</span><span class="val">${evt.mins_to_resolve}</span></div>`;
+      if (evt.strikes && evt.strikes[90]) {
+        const st = evt.strikes[90];
+        html += `<div class="row"><span class="label">Strike[90].s:</span><span class="val">${st.s}</span></div>`;
+        html += `<div class="row"><span class="label">Strike[90].ya:</span><span class="val green">${st.ya}</span></div>`;
+        html += `<div class="row"><span class="label">Strike[90].yb:</span><span class="val">${st.yb}</span></div>`;
+      }
+    }
+    if (s.errors && s.errors.length) {
+      html += `<div class="row"><span class="label">Errors:</span><span class="val red">${s.errors.join(', ')}</span></div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Compare tickers between snap 1 and snap 3
+  if (snaps[0] && snaps[2]) {
+    const t1 = snaps[0].events && snaps[0].events[0] ? snaps[0].events[0].ticker : null;
+    const t3 = snaps[2].events && snaps[2].events[0] ? snaps[2].events[0].ticker : null;
+    html += `<div class="card"><div class="sec">Cross-Snapshot Comparison</div>`;
+    html += `<div class="row"><span class="label">Snap 1 ticker:</span><span class="val">${t1}</span></div>`;
+    html += `<div class="row"><span class="label">Snap 3 ticker:</span><span class="val">${t3}</span></div>`;
+    html += `<div class="row"><span class="label">Tickers match:</span><span class="val ${t1===t3?'green':'red'}">${t1===t3?'YES — matching works':'NO — this is the bug'}</span></div>`;
+    if (snaps[0].events && snaps[0].events[0] && snaps[2].events && snaps[2].events[0]) {
+      const s1 = snaps[0].events[0].strikes[90];
+      const s3 = snaps[2].events[0].strikes[90];
+      if (s1 && s3) {
+        const move = (s3.ya - s1.ya).toFixed(4);
+        html += `<div class="row"><span class="label">Strike[90] ya snap1:</span><span class="val">${s1.ya}</span></div>`;
+        html += `<div class="row"><span class="label">Strike[90] ya snap3:</span><span class="val">${s3.ya}</span></div>`;
+        html += `<div class="row"><span class="label">Price move:</span><span class="val amber">${move}</span></div>`;
+        html += `<div class="row"><span class="label">BTC move:</span><span class="val amber">${snaps[2].btc_spot && snaps[0].btc_spot ? (snaps[2].btc_spot - snaps[0].btc_spot).toFixed(2) : 'no BTC data'}</span></div>`;
+      }
+    }
+    html += `</div>`;
+  }
+
+  out.innerHTML = html;
+}
+</script>
+</body>
+</html>
