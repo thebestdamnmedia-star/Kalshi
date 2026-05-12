@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalshi Live Logger</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a14;color:#eee;font-family:ui-monospace,monospace;padding:14px;font-size:12px;line-height:1.5;max-width:900px;margin:0 auto}
+h1{font-size:18px;color:#f7931a;margin-bottom:14px}
+.btn{border:none;padding:11px 20px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;width:100%;margin-bottom:10px}
+.start{background:#00e5aa;color:#000}
+.stop{background:#ff5f6d;color:#fff}
+.card{background:#16162a;border:1px solid #2a2a40;border-radius:8px;padding:12px;margin-bottom:10px}
+.sec{font-size:10px;color:#888;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid #2a2a40;padding-bottom:5px}
+.row{display:flex;justify-content:space-between;padding:3px 0}
+.label{color:#888}
+.val{font-weight:600}
+.amber{color:#ffb340}
+.green{color:#00e5aa}
+.red{color:#ff5f6d}
+.muted{color:#555}
+.log{height:200px;overflow-y:auto;background:#0a0a14;padding:8px;border-radius:4px;font-size:10px;color:#666}
+.log .ok{color:#00e5aa}
+.log .err{color:#ff5f6d}
+.log .info{color:#888}
+</style>
+</head>
+<body>
+<h1>Kalshi Live Logger</h1>
+<button class="btn start" id="startBtn" onclick="startLogger()">Start Logging</button>
+<button class="btn stop" id="stopBtn" onclick="stopLogger()" style="display:none">Stop Logging</button>
+
+<div class="card">
+<div class="sec">Live Status</div>
+<div class="row"><span class="label">Status:</span><span class="val" id="status">Idle</span></div>
+<div class="row"><span class="label">BTC Spot:</span><span class="val amber" id="btc">--</span></div>
+<div class="row"><span class="label">Snapshots this session:</span><span class="val green" id="count">0</span></div>
+<div class="row"><span class="label">Total in index:</span><span class="val" id="total">--</span></div>
+<div class="row"><span class="label">Last snapshot:</span><span class="val" id="lastsnap">--</span></div>
+<div class="row"><span class="label">Last error:</span><span class="val red" id="lasterr">none</span></div>
+</div>
+
+<div class="card">
+<div class="sec">Live Feed</div>
+<div class="log" id="log"></div>
+</div>
+
+<script>
+let running = false;
+let timer = null;
+let sessionCount = 0;
+
+function log(msg, type) {
+  const el = document.getElementById(`log`);
+  const line = document.createElement(`div`);
+  line.className = type || `info`;
+  line.textContent = new Date().toISOString().slice(11,19) + ` ` + msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  if (el.children.length > 200) el.removeChild(el.firstChild);
+}
+
+async function getBTC() {
+  const r = await fetch(`https://api.coinbase.com/v2/prices/BTC-USD/spot`);
+  const d = await r.json();
+  return parseFloat(d.data.amount);
+}
+
+async function getIndex() {
+  const r = await fetch(`/api/proxy`, {
+    method: `POST`,
+    headers: {[`Content-Type`]: `application/json`},
+    body: JSON.stringify({_storage: true, action: `get`, key: `ladder:index`})
+  });
+  const d = await r.json();
+  try { return d.result ? JSON.parse(d.result) : []; }
+  catch { return []; }
+}
+
+async function kFetch(path) {
+  const r = await fetch(`/api/proxy`, {
+    method: `POST`,
+    headers: {[`Content-Type`]: `application/json`},
+    body: JSON.stringify({_kalshi: true, url: `https://api.elections.kalshi.com` + path})
+  });
+  if (!r.ok) throw new Error(`Proxy ` + r.status);
+  return r.json();
+}
+
+async function writeSnapshot(snapshot) {
+  const key = `ladder:` + snapshot.ts;
+  await fetch(`/api/proxy`, {
+    method: `POST`,
+    headers: {[`Content-Type`]: `application/json`},
+    body: JSON.stringify({_storage: true, action: `set`, key: key, value: snapshot})
+  });
+  const idx = await getIndex();
+  idx.push(snapshot.ts);
+  const trimmed = idx.slice(-500);
+  await fetch(`/api/proxy`, {
+    method: `POST`,
+    headers: {[`Content-Type`]: `application/json`},
+    body: JSON.stringify({_storage: true, action: `set`, key: `ladder:index`, value: trimmed})
+  });
+  await fetch(`/api/proxy`, {
+    method: `POST`,
+    headers: {[`Content-Type`]: `application/json`},
+    body: JSON.stringify({_storage: true, action: `set`, key: `ladder:latest`, value: snapshot})
+  });
+  return key;
+}
+
+async function capture() {
+  if (!running) return;
+  document.getElementById(`status`).textContent = `Capturing...`;
+  const errors = [];
+  const now = Date.now();
+  const twoHrOut = now + 2 * 3600 * 1000;
+  let btc_spot = null;
+  let snapshot_events = [];
+
+  try {
+    btc_spot = await getBTC();
+    document.getElementById(`btc`).textContent = `$` + btc_spot.toLocaleString();
+  } catch(e) {
+    errors.push(`BTC: ` + e.message);
+    document.getElementById(`lasterr`).textContent = `BTC fetch failed`;
+  }
+
+  for (const series of [`KXBTCD`, `KXBTC15M`]) {
+    try {
+      const evtData = await kFetch(`/trade-api/v2/events?series_ticker=` + series + `&status=open&limit=20`);
+      const events = (evtData.events || []).filter(e => {
+        if (!e.strike_date) return false;
+        const t = new Date(e.strike_date).getTime();
+        return t > now && t <= twoHrOut;
+      }).sort((a, b) => new Date(a.strike_date) - new Date(b.strike_date));
+
+      for (const evt of events.slice(0, 3)) {
+        try {
+          const ladderData = await kFetch(`/trade-api/v2/events/` + evt.event_ticker + `?with_nested_markets=true`);
+          const markets = (ladderData.event && ladderData.event.markets) || ladderData.markets || [];
+          const strikes = markets.map(m => {
+            let strike = null;
+            if (m.cap_strike) strike = m.cap_strike;
+            else if (m.ticker) {
+              const match = m.ticker.match(/[BT](\d+)$/);
+              if (match) strike = parseInt(match[1]);
+            }
+            return {
+              t: m.ticker, s: strike, st: m.strike_type,
+              yb: parseFloat(m.yes_bid_dollars || 0),
+              ya: parseFloat(m.yes_ask_dollars || 0),
+              nb: parseFloat(m.no_bid_dollars || 0),
+              na: parseFloat(m.no_ask_dollars || 0),
+              ybs: parseFloat(m.yes_bid_size_fp || 0),
+              yas: parseFloat(m.yes_ask_size_fp || 0),
+              v: parseFloat(m.volume_fp || 0),
+              oi: parseFloat(m.open_interest_fp || 0)
+            };
+          });
+          snapshot_events.push({
+            series: series,
+            ticker: evt.event_ticker,
+            strike_date: evt.strike_date,
+            mins_to_resolve: Math.round((new Date(evt.strike_date).getTime() - now) / 60000),
+            strike_count: strikes.length,
+            strikes: strikes
+          });
+        } catch(e) {
+          errors.push(evt.event_ticker + `: ` + e.message);
+        }
+      }
+    } catch(e) {
+      errors.push(series + `: ` + e.message);
+    }
+  }
+
+  const snapshot = {
+    ts: new Date().toISOString(),
+    btc_spot: btc_spot,
+    event_count: snapshot_events.length,
+    events: snapshot_events,
+    errors: errors
+  };
+
+  try {
+    const key = await writeSnapshot(snapshot);
+    sessionCount++;
+    document.getElementById(`count`).textContent = sessionCount;
+    document.getElementById(`lastsnap`).textContent = new Date().toISOString().slice(11,19);
+    const total = await getIndex();
+    document.getElementById(`total`).textContent = total.length;
+    const strikes = snapshot_events.reduce((s, e) => s + e.strike_count, 0);
+    log(`snapshot ${sessionCount} — BTC $${btc_spot} — ${strikes} strikes — ${errors.length} errors`, errors.length ? `err` : `ok`);
+    if (errors.length) document.getElementById(`lasterr`).textContent = errors[0];
+    else document.getElementById(`lasterr`).textContent = `none`;
+  } catch(e) {
+    log(`write failed: ` + e.message, `err`);
+    document.getElementById(`lasterr`).textContent = e.message;
+  }
+
+  document.getElementById(`status`).textContent = `Running`;
+  if (running) timer = setTimeout(capture, 10000);
+}
+
+function startLogger() {
+  running = true;
+  sessionCount = 0;
+  document.getElementById(`startBtn`).style.display = `none`;
+  document.getElementById(`stopBtn`).style.display = `block`;
+  document.getElementById(`status`).textContent = `Running`;
+  log(`Logger started — capturing every 10 seconds`, `info`);
+  capture();
+}
+
+function stopLogger() {
+  running = false;
+  clearTimeout(timer);
+  document.getElementById(`startBtn`).style.display = `block`;
+  document.getElementById(`stopBtn`).style.display = `none`;
+  document.getElementById(`status`).textContent = `Stopped`;
+  log(`Logger stopped — ` + sessionCount + ` snapshots captured this session`, `info`);
+}
+</script>
+</body>
+</html>
