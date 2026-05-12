@@ -97,7 +97,7 @@ async function writeSnapshot(snapshot) {
   });
   const idx = await getIndex();
   idx.push(snapshot.ts);
-  const trimmed = idx.slice(-500);
+  const trimmed = idx.slice(-25000);
   await fetch(`/api/proxy`, {
     method: `POST`,
     headers: {[`Content-Type`]: `application/json`},
