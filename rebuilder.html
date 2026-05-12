@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Index Rebuilder</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a14;color:#eee;font-family:ui-monospace,monospace;padding:14px;font-size:12px;line-height:1.5;max-width:900px;margin:0 auto}
+h1{font-size:18px;color:#f7931a;margin-bottom:14px}
+.btn{background:#f7931a;color:#000;border:none;padding:11px 20px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;width:100%;margin-bottom:10px}
+.card{background:#16162a;border:1px solid #2a2a40;border-radius:8px;padding:12px;margin-bottom:10px}
+.sec{font-size:10px;color:#888;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid #2a2a40;padding-bottom:5px}
+.row{display:flex;justify-content:space-between;padding:3px 0}
+.label{color:#888}
+.val{font-weight:600}
+.green{color:#00e5aa}
+.red{color:#ff5f6d}
+.amber{color:#ffb340}
+pre{background:#0a0a14;padding:8px;border-radius:4px;font-size:10px;color:#aaa;white-space:pre-wrap;word-wrap:break-word;margin-top:8px}
+</style>
+</head>
+<body>
+<h1>Index Rebuilder</h1>
+<button class="btn" onclick="rebuild()">Rebuild Index from All Snapshots</button>
+<div id="out"></div>
+<script>
+async function proxy(body) {
+  const r = await fetch(`/api/proxy`, {
+    method: `POST`,
+    headers: {[`Content-Type`]: `application/json`},
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+async function rebuild() {
+  const out = document.getElementById(`out`);
+  out.innerHTML = `<div class="card"><div class="sec">Rebuilding...</div><div id="log"></div></div>`;
+
+  function status(msg, color) {
+    const el = document.getElementById(`log`);
+    const d = document.createElement(`div`);
+    d.className = `row`;
+    d.innerHTML = `<span style="color:${color||`#eee`}">${msg}</span>`;
+    el.appendChild(d);
+  }
+
+  try {
+    status(`Scanning Upstash for all ladder:* keys...`, `#888`);
+    const result = await proxy({_storage: true, action: `list`, key: `ladder:*`});
+    
+    let keys = result.result;
+    if (!keys || !Array.isArray(keys)) {
+      status(`Error: unexpected response from Upstash`, `#ff5f6d`);
+      return;
+    }
+
+    status(`Found ${keys.length} total keys`, `#ffb340`);
+
+    const snapKeys = keys.filter(k => k !== `ladder:index` && k !== `ladder:latest`);
+    status(`Snapshot keys: ${snapKeys.length} (excluding index and latest)`, `#ffb340`);
+
+    const timestamps = snapKeys.map(k => k.replace(`ladder:`, ``)).sort();
+    status(`Sorted ${timestamps.length} timestamps chronologically`, `#888`);
+
+    status(`Writing rebuilt index to Upstash...`, `#888`);
+    const writeResult = await proxy({
+      _storage: true,
+      action: `set`,
+      key: `ladder:index`,
+      value: timestamps
+    });
+
+    if (writeResult.ok) {
+      status(`Done. Index rebuilt with ${timestamps.length} snapshots.`, `#00e5aa`);
+      status(`Earliest: ${timestamps[0]}`, `#888`);
+      status(`Latest: ${timestamps[timestamps.length - 1]}`, `#888`);
+      status(`Time span: ${Math.round((new Date(timestamps[timestamps.length-1]) - new Date(timestamps[0])) / 3600000 * 10) / 10} hours`, `#00e5aa`);
+    } else {
+      status(`Write failed — check proxy connection`, `#ff5f6d`);
+    }
+  } catch(e) {
+    status(`Error: ` + e.message, `#ff5f6d`);
+  }
+}
+</script>
+</body>
+</html>
