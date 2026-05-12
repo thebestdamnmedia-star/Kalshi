@@ -27,7 +27,6 @@ h1{font-size:18px;color:#f7931a;margin-bottom:14px}
 </head>
 <body>
 <h1>Kalshi Brute Force Miner</h1>
-
 <div class="card">
 <div class="sec">Settings</div>
 <div class="row"><span class="label">Min contract move to flag:</span><span class="val amber">$0.05</span></div>
@@ -35,18 +34,14 @@ h1{font-size:18px;color:#f7931a;margin-bottom:14px}
 <div class="row"><span class="label">Forward window:</span><span class="val amber">5 snapshots (~50 sec)</span></div>
 <div class="row"><span class="label">Strike matching:</span><span class="val amber">By array index</span></div>
 </div>
-
 <div class="card">
 <div class="sec">Progress</div>
 <div class="row"><span class="label">Status:</span><span class="val" id="status">Idle</span></div>
 <div class="row"><span class="label">Progress:</span><span class="val" id="loaded">0</span></div>
 <div class="progress"><div class="progress-bar" id="bar" style="width:0%"></div></div>
 </div>
-
 <button class="btn" onclick="mine()">Run Brute Force Mine</button>
-
 <div id="results"></div>
-
-<script>
-async function proxy(body) {
-  const r​​​​​​​​​​​​​​​​
+<script src="/miner.js"></script>
+</body>
+</html>
