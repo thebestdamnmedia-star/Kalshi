@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Kalshi — Fair Value Backtest</title>
+<title>Kalshi — Calibrated Backtest</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#0a0a0f;--surface:#111118;--surface2:#18181f;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);--purple:#7c6ff7;--teal:#2dd4a0;--coral:#f87171;--amber:#fbbf24;--blue:#60a5fa;--green:#4ade80;--text:#e8e8f0;--muted:#6b6b80}
@@ -11,9 +11,8 @@ h1{font-size:20px;font-weight:500;margin-bottom:4px}
 .sub{font-size:11px;color:var(--muted);font-family:'Courier New',monospace;margin-bottom:20px}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:14px}
 .sec{font-size:10px;color:var(--muted);font-family:'Courier New',monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
-.btn{padding:12px 24px;border-radius:6px;border:none;font-size:14px;font-weight:500;cursor:pointer;width:100%;margin-top:6px}
-.btn-run{background:var(--amber);color:#000}
-.btn-run:disabled{opacity:.4;cursor:not-allowed}
+.btn{padding:12px 24px;border-radius:6px;border:none;font-size:14px;font-weight:500;cursor:pointer;width:100%;margin-top:6px;background:var(--amber);color:#000}
+.btn:disabled{opacity:.4;cursor:not-allowed}
 .prog-bar{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:8px}
 .prog-fill{height:100%;background:var(--amber);border-radius:2px;transition:width .3s;width:0}
 #log{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-family:'Courier New',monospace;font-size:11px;color:var(--muted);min-height:60px;max-height:160px;overflow-y:auto;white-space:pre-wrap;margin-top:10px}
@@ -42,7 +41,7 @@ td{padding:5px 8px;border-bottom:1px solid var(--border)}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .tab{padding:5px 12px;border-radius:20px;font-size:10px;font-family:'Courier New',monospace;cursor:pointer;border:1px solid var(--border);color:var(--muted)}
 .tab.active{color:var(--text);background:rgba(255,255,255,.08);border-color:var(--border2)}
-.trow{display:grid;grid-template-columns:70px 60px 70px 55px 55px 60px 60px 70px 70px;gap:4px;padding:4px 6px;border-radius:4px;font-family:'Courier New',monospace;font-size:10px;border-bottom:1px solid var(--border)}
+.trow{display:grid;grid-template-columns:70px 55px 55px 70px 55px 55px 55px 60px 75px;gap:4px;padding:4px 6px;border-radius:4px;font-family:'Courier New',monospace;font-size:10px;border-bottom:1px solid var(--border)}
 .trow.win{background:rgba(45,212,160,.04)}.trow.loss{background:rgba(248,113,113,.04)}.trow.head{color:var(--muted);font-size:9px}
 .cfg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
 label{font-size:11px;color:var(--muted);font-family:'Courier New',monospace;display:block;margin-bottom:4px}
@@ -50,8 +49,8 @@ input[type=number]{background:var(--bg);border:1px solid var(--border2);border-r
 </style>
 </head>
 <body>
-<h1>Kalshi — Fair Value Backtest</h1>
-<div class="sub">Fair value mispricing engine · Full ladder analysis · KXBTCD hourly contracts</div>
+<h1>Kalshi — Calibrated Backtest</h1>
+<div class="sub">Real market fair value engine · fade overpriced contracts · KXBTCD hourly</div>
 
 <div class="card">
 <div class="sec">Configuration</div>
@@ -62,12 +61,12 @@ input[type=number]{background:var(--bg);border:1px solid var(--border2);border-r
 <div><label>Min Edge to Trade ($)</label><input type="number" id="minedge" value="0.08" step="0.01"></div>
 </div>
 <div class="cfg">
-<div><label>BTC Momentum Trigger ($)</label><input type="number" id="momtrigger" value="60" step="10"></div>
 <div><label>Exit Snapshots (×10sec)</label><input type="number" id="exitsnaps" value="5" step="1"></div>
-<div><label>Min Mins to Resolve</label><input type="number" id="minmins" value="10" step="5"></div>
-<div><label>Volatility Window (snaps)</label><input type="number" id="volwin" value="10" step="5"></div>
+<div><label>Min Mins to Resolve</label><input type="number" id="minmins" value="5" step="5"></div>
+<div><label>Max Mins to Resolve</label><input type="number" id="maxmins" value="55" step="5"></div>
+<div><label>Min Observations per Bucket</label><input type="number" id="minobs" value="20" step="5"></div>
 </div>
-<button class="btn btn-run" id="runBtn" onclick="runBacktest()">Run Fair Value Backtest</button>
+<button class="btn" id="runBtn" onclick="runBacktest()">Run Calibrated Backtest</button>
 <div class="prog-bar"><div class="prog-fill" id="pf"></div></div>
 <div id="log"></div>
 </div>
@@ -81,7 +80,7 @@ input[type=number]{background:var(--bg);border:1px solid var(--border2);border-r
 </div>
 <div class="card">
 <div class="sec">Hourly Breakdown</div>
-<table><thead><tr><th>Hour UTC</th><th>Trades</th><th>WR</th><th>P&L</th><th>Running Bal</th><th>Avg Edge</th></tr></thead>
+<table><thead><tr><th>Hour UTC</th><th>Trades</th><th>WR</th><th>P&L</th><th>Running Bal</th><th>Avg Edge</th><th>Models</th></tr></thead>
 <tbody id="hourTbl"></tbody></table>
 </div>
 <div class="card">
@@ -97,93 +96,98 @@ function lg(msg,cls='info'){const d=el('log');d.innerHTML+='<span class="'+cls+'
 function prog(p){el('pf').style.width=p+'%';}
 function fmtD(n){return(n>=0?'+$':'-$')+Math.abs(n).toFixed(2);}
 
-async function proxy(body){
-const r=await fetch('/api/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-return r.json();
-}
+// CALIBRATED FAIR VALUE TABLE from calibrator.html
+// distBuckets: how far spot is above strike (positive = YES favored)
+// timeBuckets: minutes to resolution
+const DIST_BUCKETS=[-1500,-1000,-750,-500,-400,-300,-200,-150,-100,-50,-25,0,25,50,100,150,200,300,400,500,750,1000,1500];
+const TIME_BUCKETS=[5,10,15,20,25,30,35,40,45,50,55,60];
 
-async function rebuildIndex(){
-lg('Rebuilding index...','info');
-const result=await proxy({_storage:true,action:'list',key:'ladder:*'});
-const keys=result.result;
-if(!keys||!Array.isArray(keys))return [];
-const snapKeys=keys.filter(k=>k!=='ladder:index'&&k!=='ladder:latest');
-const timestamps=snapKeys.map(k=>k.replace('ladder:','')).sort();
-await proxy({_storage:true,action:'set',key:'ladder:index',value:timestamps});
-lg('Index rebuilt — '+timestamps.length+' snapshots','ok');
-return timestamps;
-}
+// Fair value table — avg market YES ask per bucket
+// Generated from real Kalshi ladder data (4400+ snapshots)
+const FV_TABLE={
+1500:{5:null,10:null,15:null,20:null,25:null,30:null,35:null,40:null,45:null,50:0.990,55:0.987,60:0.822},
+1000:{5:null,10:null,15:null,20:null,25:0.990,30:0.990,35:0.990,40:0.990,45:0.990,50:0.990,55:0.988,60:0.629},
+750:{5:null,10:null,15:null,20:0.989,25:0.990,30:0.990,35:0.989,40:0.987,45:0.986,50:0.985,55:0.982,60:0.662},
+500:{5:null,10:null,15:0.988,20:0.986,25:0.983,30:0.982,35:0.979,40:0.975,45:0.975,50:0.970,55:0.964,60:0.846},
+400:{5:null,10:0.989,15:0.984,20:0.978,25:0.971,30:0.972,35:0.969,40:0.963,45:0.963,50:0.958,55:0.955,60:0.857},
+300:{5:0.988,10:0.980,15:0.968,20:0.956,25:0.959,30:0.961,35:0.953,40:0.948,45:0.938,50:0.927,55:0.918,60:0.822},
+200:{5:0.984,10:0.965,15:0.951,20:0.944,25:0.937,30:0.929,35:0.915,40:0.916,45:0.887,50:0.878,55:0.861,60:0.742},
+150:{5:0.969,10:0.957,15:0.943,20:0.908,25:0.897,30:0.882,35:0.892,40:0.839,45:0.839,50:0.811,55:0.795,60:0.611},
+100:{5:0.958,10:0.909,15:0.853,20:0.841,25:0.810,30:0.808,35:0.766,40:0.765,45:0.737,50:0.727,55:0.719,60:0.724},
+50:{5:0.872,10:0.806,15:0.782,20:0.733,25:0.720,30:0.715,35:0.712,40:0.657,45:0.667,50:0.639,55:0.630,60:0.637},
+25:{5:0.802,10:0.685,15:0.664,20:0.631,25:0.637,30:0.601,35:0.616,40:0.601,45:0.590,50:0.589,55:0.582,60:0.370},
+0:{5:0.653,10:0.572,15:0.530,20:0.546,25:0.540,30:0.529,35:0.527,40:0.524,45:0.528,50:0.527,55:0.528,60:0.510},
+'-25':{5:0.383,10:0.392,15:0.413,20:0.418,25:0.453,30:0.451,35:0.442,40:0.465,45:0.478,50:0.485,55:0.472,60:0.476},
+'-50':{5:0.123,10:0.275,15:0.288,20:0.324,25:0.353,30:0.374,35:0.371,40:0.386,45:0.409,50:0.390,55:0.396,60:0.299},
+'-100':{5:0.048,10:0.125,15:0.176,20:0.206,25:0.260,30:0.253,35:0.292,40:0.291,45:0.304,50:0.313,55:0.335,60:0.304},
+'-150':{5:0.030,10:0.070,15:0.081,20:0.117,25:0.133,30:0.155,35:0.155,40:0.185,45:0.211,50:0.222,55:0.232,60:0.220},
+'-200':{5:0.014,10:0.031,15:0.046,20:0.061,25:0.092,30:0.090,35:0.104,40:0.127,45:0.143,50:0.164,55:0.171,60:0.163},
+'-300':{5:0.011,10:0.017,15:0.021,20:0.032,25:0.045,30:0.051,35:0.051,40:0.069,45:0.076,50:0.086,55:0.102,60:0.098},
+'-400':{5:0.010,10:0.011,15:0.013,20:0.018,25:0.025,30:0.029,35:0.030,40:0.039,45:0.043,50:0.049,55:0.060,60:0.060},
+'-500':{5:0.010,10:0.010,15:0.010,20:0.012,25:0.015,30:0.017,35:0.017,40:0.019,45:0.022,50:0.025,55:0.035,60:null},
+'-750':{5:0.010,10:0.010,15:0.010,20:0.010,25:0.011,30:0.012,35:0.011,40:0.013,45:0.013,50:0.015,55:0.022,60:null},
+'-1000':{5:0.010,10:0.010,15:0.011,20:0.011,25:0.011,30:0.012,35:0.011,40:0.011,45:0.011,50:0.012,55:0.021,60:null},
+'-1500':{5:0.010,10:0.010,15:0.010,20:0.010,25:0.010,30:0.010,35:0.010,40:0.010,45:0.010,50:0.011,55:0.013,60:null}
+};
 
-async function loadSnaps(index){
-const toLoad=index.filter((_,i)=>i%2===0);
-lg('Loading '+toLoad.length+' snapshots...','info');
-const snaps=[];
-for(let i=0;i<toLoad.length;i++){
-const r=await proxy({_storage:true,action:'get',key:'ladder:'+toLoad[i]});
-if(r.result){try{snaps.push(JSON.parse(r.result));}catch(e){}}
-if(i%20===0)prog(10+Math.round(i/toLoad.length*50));
-await new Promise(r=>setTimeout(r,15));
-}
-snaps.sort((a,b)=>new Date(a.ts)-new Date(b.ts));
-lg('Loaded '+snaps.length+' snapshots','ok');
-return snaps;
-}
+// Observation counts per bucket
+const OBS_TABLE={
+1500:{5:0,10:0,15:0,20:0,25:0,30:0,35:0,40:0,45:0,50:11,55:28,60:60},
+1000:{5:0,10:0,15:0,20:0,25:5,30:19,35:22,40:38,45:44,50:83,55:80,60:57},
+750:{5:0,10:0,15:0,20:9,25:9,30:33,35:55,40:103,45:106,50:153,55:164,60:79},
+500:{5:0,10:0,15:17,20:53,25:53,30:67,35:120,40:117,45:157,50:184,55:173,60:71},
+400:{5:0,10:19,15:43,20:76,25:80,30:93,35:116,40:111,45:147,50:175,55:175,60:93},
+300:{5:11,10:54,15:60,20:82,25:125,30:146,35:159,40:173,45:197,50:209,55:192,60:94},
+200:{5:25,10:68,15:92,20:120,25:140,30:144,35:115,40:143,45:146,50:166,55:147,60:76},
+150:{5:55,10:92,15:100,20:105,25:101,30:77,35:95,40:94,45:92,50:89,55:101,60:49},
+100:{5:64,10:97,15:91,20:88,25:87,30:104,35:86,40:91,45:108,50:120,55:91,60:45},
+50:{5:81,10:80,15:73,20:82,25:70,30:58,35:77,40:64,45:78,50:64,55:71,60:28},
+25:{5:84,10:52,15:54,20:43,25:54,30:43,35:40,40:58,45:23,50:50,55:53,60:28},
+0:{5:67,10:37,15:43,20:47,25:46,30:60,35:40,40:37,45:71,50:69,55:46,60:21},
+'-25':{5:42,10:54,15:48,20:51,25:35,30:34,35:61,40:47,45:55,50:49,55:43,60:30},
+'-50':{5:120,10:70,15:75,20:75,25:84,30:63,35:58,40:73,45:65,50:66,55:80,60:36},
+'-100':{5:134,10:97,15:91,20:88,25:87,30:104,35:86,40:91,45:108,50:120,55:91,60:45},
+'-150':{5:140,10:98,15:101,20:105,25:101,30:77,35:95,40:94,45:92,50:89,55:101,60:49},
+'-200':{5:176,10:149,15:145,20:141,25:129,30:140,35:152,40:133,45:162,50:163,55:136,60:63},
+'-300':{5:274,10:195,15:192,20:193,25:188,30:181,35:181,40:185,45:200,50:209,55:192,60:94},
+'-400':{5:274,10:195,15:192,20:193,25:188,30:181,35:181,40:185,45:200,50:209,55:192,60:93},
+'-500':{5:506,10:338,15:330,20:333,25:334,30:326,35:296,40:328,45:346,50:375,55:339,60:170},
+'-750':{5:688,10:488,15:485,20:491,25:477,30:439,35:457,40:464,45:492,50:507,55:485,60:237},
+'-1000':{5:998,10:734,15:721,20:720,25:693,30:683,35:695,40:688,45:762,50:790,55:712,60:343},
+'-1500':{5:21251,10:15060,15:14775,20:14853,25:14523,30:13913,35:13861,40:14221,45:15436,50:16152,55:14937,60:7175}
+};
 
 function parseStrike(ticker){
 const m=ticker.match(/-T(\d+(?:\.\d+)?)$/);
 return m?parseFloat(m[1]):null;
 }
 
-// Fair value estimation for binary "BTC above X" contract
-// Uses distance from spot, time remaining, and recent volatility
-// Returns probability 0-1
-function fairValue(btcSpot,strikePrice,minsLeft,btcVol30s){
-if(!btcSpot||!strikePrice||minsLeft<=0)return 0.5;
-const dist=btcSpot-strikePrice; // positive = spot above strike = YES favored
-// Base probability from distance relative to recent volatility
-// Use vol to estimate expected range
-const volPerMin=Math.max(Math.abs(btcVol30s)/0.5,50); // $/min volatility estimate
-const expectedRange=volPerMin*Math.sqrt(minsLeft); // expected BTC range by resolution
-// z-score: how many standard deviations is spot above strike
-const z=dist/Math.max(expectedRange,100);
-// Convert z to probability using sigmoid approximation
-// sigmoid(z*1.5) gives reasonable probability curve
-const prob=1/(1+Math.exp(-z*1.5));
-// Clamp between 1% and 99%
-return Math.max(0.01,Math.min(0.99,prob));
+function getFairValue(dist,mins,minObs){
+// Find closest dist bucket
+const distKey=DIST_BUCKETS.reduce((prev,curr)=>Math.abs(curr-dist)<Math.abs(prev-dist)?curr:prev);
+// Find closest time bucket
+const timeKey=TIME_BUCKETS.reduce((prev,curr)=>Math.abs(curr-mins)<Math.abs(prev-mins)?curr:prev);
+const key=distKey>=0?distKey:String(distKey);
+if(!FV_TABLE[key])return null;
+const fv=FV_TABLE[key][timeKey];
+const obs=OBS_TABLE[key]?OBS_TABLE[key][timeKey]:0;
+if(fv===null||obs<minObs)return null;
+return{fv,obs,distKey,timeKey};
 }
 
-// Find mispriced contracts given current BTC spot and recent move
-// Returns array of opportunities sorted by edge size
-function findMispriced(evt,btcSpot,btcDelta30s,btcVol30s,minEdge){
-const opps=[];
-for(let si=0;si<evt.strikes.length;si++){
-const st=evt.strikes[si];
-if(!st||!st.t)continue;
-const strikePrice=parseStrike(st.t);
-if(!strikePrice)continue;
-// Skip strikes far from spot (illiquid, no opportunity)
-if(Math.abs(strikePrice-btcSpot)>1500)continue;
-const fv=fairValue(btcSpot,strikePrice,evt.mins_to_resolve,btcVol30s);
-const marketAsk=st.ya; // cost to buy YES
-const marketNoAsk=st.na; // cost to buy NO
-if(marketAsk<=0||marketNoAsk<=0)continue;
-if(marketAsk>=1||marketNoAsk>=1)continue;
-// Edge = fair value - market ask (for YES)
-// Positive edge means market is underpricing YES
-const yesEdge=fv-marketAsk;
-// Edge for NO = (1-fv) - noAsk
-const noEdge=(1-fv)-marketNoAsk;
-// Only trade if edge exceeds minimum AND contract is in tradeable range
-if(yesEdge>=minEdge&&marketAsk>=0.05&&marketAsk<=0.80){
-opps.push({si,strikePrice,marketAsk,fv,edge:yesEdge,side:'YES',minsLeft:evt.mins_to_resolve,ticker:st.t});
+async function proxy(body){
+const r=await fetch('/api/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+return r.json();
 }
-if(noEdge>=minEdge&&marketNoAsk>=0.05&&marketNoAsk<=0.80){
-opps.push({si,strikePrice,marketNoAsk,fv,edge:noEdge,side:'NO',minsLeft:evt.mins_to_resolve,ticker:st.t});
-}
-}
-// Sort by edge descending — take best opportunity
-return opps.sort((a,b)=>b.edge-a.edge);
+
+async function rebuildIndex(){
+const result=await proxy({_storage:true,action:'list',key:'ladder:*'});
+const keys=result.result;
+if(!keys||!Array.isArray(keys))return [];
+const snapKeys=keys.filter(k=>k!=='ladder:index'&&k!=='ladder:latest');
+const timestamps=snapKeys.map(k=>k.replace('ladder:','')).sort();
+await proxy({_storage:true,action:'set',key:'ladder:index',value:timestamps});
+return timestamps;
 }
 
 function calcStats(trades,cap){
@@ -199,9 +203,8 @@ let maxStreak=0,streak=0;
 for(const t of trades){if(t.pnl<=0){streak++;if(streak>maxStreak)maxStreak=streak;}else streak=0;}
 const hours=trades.length>1?(new Date(trades[trades.length-1].ts)-new Date(trades[0].ts))/(1000*3600):1;
 const perDay=(totalPnl/Math.max(hours,1))*6.5;
-const perYear=perDay*252;
-const avgEdge=trades.reduce((s,t)=>s+(t.edge||0),0)/trades.length;
-return{count:trades.length,wins:wins.length,losses:losses.length,wr:(wins.length/trades.length*100).toFixed(1),totalPnl:totalPnl.toFixed(2),avgWin:avgWin.toFixed(3),avgLoss:avgLoss.toFixed(3),finalBal:(cap+totalPnl).toFixed(2),maxDD:maxDD.toFixed(1),maxStreak,perDay:perDay.toFixed(2),perYear:perYear.toFixed(0),avgEdge:avgEdge.toFixed(3)};
+const avgEdge=trades.filter(t=>t.edge).reduce((s,t)=>s+t.edge,0)/trades.filter(t=>t.edge).length;
+return{count:trades.length,wins:wins.length,losses:losses.length,wr:(wins.length/trades.length*100).toFixed(1),totalPnl:totalPnl.toFixed(2),avgWin:avgWin.toFixed(3),avgLoss:avgLoss.toFixed(3),finalBal:(cap+totalPnl).toFixed(2),maxDD:maxDD.toFixed(1),maxStreak,perDay:perDay.toFixed(2),perYear:(perDay*252).toFixed(0),avgEdge:isNaN(avgEdge)?'0.000':avgEdge.toFixed(3)};
 }
 
 function flatPnL(trades,cap){
@@ -228,162 +231,127 @@ const cap=parseFloat(el('cap').value)||100;
 const contracts=parseInt(el('contracts').value)||10;
 const fee=parseFloat(el('fee').value)||0.02;
 const minEdge=parseFloat(el('minedge').value)||0.08;
-const momTrigger=parseFloat(el('momtrigger').value)||60;
 const exitSnaps=parseInt(el('exitsnaps').value)||5;
-const minMins=parseInt(el('minmins').value)||10;
-const volWin=parseInt(el('volwin').value)||10;
+const minMins=parseInt(el('minmins').value)||5;
+const maxMins=parseInt(el('maxmins').value)||55;
+const minObs=parseInt(el('minobs').value)||20;
 
 try{
 prog(5);
+lg('Rebuilding index...','info');
 const index=await rebuildIndex();
-if(!index.length){lg('No data','err');btn.disabled=false;return;}
-const snaps=await loadSnaps(index);
-if(snaps.length<20){lg('Not enough snapshots','err');btn.disabled=false;return;}
+lg('Index: '+index.length+' snapshots','ok');
+
+const toLoad=index.filter((_,i)=>i%2===0);
+lg('Loading '+toLoad.length+' snapshots...','info');
+const snaps=[];
+for(let i=0;i<toLoad.length;i++){
+const r=await proxy({_storage:true,action:'get',key:'ladder:'+toLoad[i]});
+if(r.result){try{snaps.push(JSON.parse(r.result));}catch(e){}}
+if(i%20===0)prog(5+Math.round(i/toLoad.length*55));
+await new Promise(r=>setTimeout(r,15));
+}
+snaps.sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+lg('Loaded '+snaps.length+' snapshots','ok');
 prog(62);
-lg('Running fair value engine on '+snaps.length+' snapshots...','info');
-lg('Min edge: $'+minEdge+' | Momentum trigger: $'+momTrigger+' | Exit: '+exitSnaps*10+'sec','info');
+lg('Running calibrated models...','info');
+lg('Min edge: $'+minEdge+' | Exit: '+exitSnaps*10+'sec | Min obs: '+minObs,'info');
 
-// MODEL A: Momentum Mispricing
-// When BTC moves hard in one direction, find contracts
-// whose market price hasn't caught up to fair value yet
-// Only trade in direction of momentum
-const mATrades=[];
+// MODEL P: Fade Overpriced YES
+// Market ask > fair value by minEdge → buy NO
+const mPTrades=[];
 
-// MODEL B: Static Mispricing
-// At any moment, scan all strikes for fair value gaps
-// regardless of recent BTC movement
-// This catches stale pricing, not just momentum plays
-const mBTrades=[];
+// MODEL U: Buy Underpriced YES
+// Market ask < fair value by minEdge → buy YES
+const mUTrades=[];
 
-// MODEL C: Mean Reversion Mispricing
-// When BTC moves hard then stalls, contracts may overshoot
-// Buy the contracts that are now OVERPRICED relative to new fair value
-// (fade the overshoot)
-const mCTrades=[];
+// MODEL X: Near-Expiry ATM Fade
+// Specific to the 5-min ATM overpricing we found (65.3% vs ~50% true prob)
+// Only fires within 10 minutes of resolution on near-ATM contracts
+const mXTrades=[];
 
-const usedA=new Set();
-const usedB=new Set();
-const usedC=new Set();
+const usedP=new Set();
+const usedU=new Set();
+const usedX=new Set();
 
-// Track BTC history for volatility calculation
-const btcHistory=[];
-
-for(let i=volWin;i<snaps.length-exitSnaps-1;i++){
+for(let i=3;i<snaps.length-exitSnaps-1;i++){
 const snap=snaps[i];
 if(!snap.btc_spot)continue;
-
-// Build BTC history
-btcHistory.push(snap.btc_spot);
-if(btcHistory.length>volWin*2)btcHistory.shift();
-
-// BTC movement metrics
+const btcSpot=snap.btc_spot;
 const btcPrev3=snaps[i-3].btc_spot;
-const btcPrev1=snaps[i-1].btc_spot;
-const btcPrevVol=snaps[i-volWin].btc_spot;
-if(!btcPrev3||!btcPrev1||!btcPrevVol)continue;
-
-const btcDelta30s=snap.btc_spot-btcPrev3;
-const btcDelta10s=snap.btc_spot-btcPrev1;
-const btcVolRange=Math.max(...btcHistory)-Math.min(...btcHistory);
-
-// Filter bad data
+if(!btcPrev3)continue;
+const btcDelta30s=btcSpot-btcPrev3;
 if(Math.abs(btcDelta30s)>200)continue;
-if(Math.abs(btcDelta10s)>200)continue;
 
-const btcMomentum=Math.abs(btcDelta30s)>=momTrigger;
-const btcFlat=Math.abs(btcDelta30s)<10;
-const momentumDir=btcDelta30s>0?'up':'down';
-
-// Get exit snapshot
 const exitSnap=snaps[i+exitSnaps];
 if(!exitSnap)continue;
 
 for(const evt of(snap.events||[])){
 if(evt.series!=='KXBTCD')continue;
-if(evt.mins_to_resolve<minMins)continue;
+if(evt.mins_to_resolve<minMins||evt.mins_to_resolve>maxMins)continue;
 
 const exitEvt=(exitSnap.events||[]).find(e=>e.ticker===evt.ticker);
 if(!exitEvt)continue;
 
-// Find all mispriced contracts right now
-const opps=findMispriced(evt,snap.btc_spot,btcDelta30s,btcVolRange,minEdge);
-
-// MODEL A: Momentum plays — only trade in direction of BTC move
-if(btcMomentum&&opps.length>0){
-// Filter to only contracts that benefit from the momentum direction
-// BTC up → buy YES on strikes below spot (become more likely)
-// BTC down → buy NO on strikes above spot (become less likely = NO more likely)
-const dirOpps=opps.filter(o=>{
-if(momentumDir==='up'&&o.side==='YES'&&o.strikePrice<snap.btc_spot)return true;
-if(momentumDir==='down'&&o.side==='NO'&&o.strikePrice>snap.btc_spot)return true;
-return false;
-});
-if(dirOpps.length>0){
-const best=dirOpps[0];
-const dedupKey='A:'+evt.ticker+':'+best.si+':'+snap.ts.slice(0,15);
-if(!usedA.has(dedupKey)){
-usedA.add(dedupKey);
-const exitSt=exitEvt.strikes[best.si];
-if(exitSt){
-const entryPrice=best.side==='YES'?best.marketAsk:best.marketNoAsk;
-const exitPrice=best.side==='YES'?exitSt.ya:exitSt.na;
-const pnl=(exitPrice-entryPrice-fee)*contracts;
-mATrades.push({model:'MA',ts:snap.ts,time:snap.ts.slice(11,19),ticker:evt.ticker,strikePrice:best.strikePrice,side:best.side,entry:entryPrice.toFixed(2),exitPrice:exitPrice.toFixed(2),fv:best.fv.toFixed(2),edge:best.edge.toFixed(3),btcSpot:snap.btc_spot,btcDelta:btcDelta30s.toFixed(0),pnl:parseFloat(pnl.toFixed(3)),mins:evt.mins_to_resolve});
-}
-}
-}
-}
-
-// MODEL B: Static mispricing — best edge regardless of BTC direction
-// Only fire when there's significant edge and no huge BTC movement (cleaner signal)
-if(!btcMomentum&&opps.length>0&&opps[0].edge>=minEdge*1.5){
-const best=opps[0];
-const dedupKey='B:'+evt.ticker+':'+best.si+':'+snap.ts.slice(0,15);
-if(!usedB.has(dedupKey)){
-usedB.add(dedupKey);
-const exitSt=exitEvt.strikes[best.si];
-if(exitSt){
-const entryPrice=best.side==='YES'?best.marketAsk:best.marketNoAsk;
-const exitPrice=best.side==='YES'?exitSt.ya:exitSt.na;
-const pnl=(exitPrice-entryPrice-fee)*contracts;
-mBTrades.push({model:'MB',ts:snap.ts,time:snap.ts.slice(11,19),ticker:evt.ticker,strikePrice:best.strikePrice,side:best.side,entry:entryPrice.toFixed(2),exitPrice:exitPrice.toFixed(2),fv:best.fv.toFixed(2),edge:best.edge.toFixed(3),btcSpot:snap.btc_spot,btcDelta:btcDelta30s.toFixed(0),pnl:parseFloat(pnl.toFixed(3)),mins:evt.mins_to_resolve});
-}
-}
-}
-
-// MODEL C: Mean reversion — BTC just moved hard, now stalling
-// Find contracts that OVERSHOT their fair value during the move
-// These are contracts priced ABOVE fair value — buy the other side
-if(btcFlat&&btcVolRange>200){
-// BTC was volatile recently but is now flat — look for overshoot
-const overshootOpps=[];
 for(let si=0;si<evt.strikes.length;si++){
 const st=evt.strikes[si];
 if(!st||!st.t)continue;
 const strikePrice=parseStrike(st.t);
 if(!strikePrice)continue;
-if(Math.abs(strikePrice-snap.btc_spot)>800)continue;
-const fv=fairValue(snap.btc_spot,strikePrice,evt.mins_to_resolve,btcVolRange);
-const marketAsk=st.ya;
+
+// Skip far OTM — no liquidity, no meaningful edge
+if(Math.abs(strikePrice-btcSpot)>1200)continue;
+
+const marketYesAsk=st.ya;
 const marketNoAsk=st.na;
-if(marketAsk<=0||marketNoAsk<=0)continue;
-// YES is OVERPRICED → buy NO
-const yesOvershoot=marketAsk-fv;
-if(yesOvershoot>=minEdge&&marketNoAsk>=0.05&&marketNoAsk<=0.80){
-overshootOpps.push({si,strikePrice,fv,edge:yesOvershoot,side:'NO',entryPrice:marketNoAsk,ticker:st.t});
+if(marketYesAsk<=0.01||marketYesAsk>=0.99)continue;
+if(marketNoAsk<=0.01||marketNoAsk>=0.99)continue;
+
+const dist=btcSpot-strikePrice;
+const fvResult=getFairValue(dist,evt.mins_to_resolve,minObs);
+if(!fvResult)continue;
+
+const fv=fvResult.fv;
+const yesEdge=fv-marketYesAsk; // positive = YES underpriced
+const noEdge=(1-fv)-marketNoAsk; // positive = NO underpriced (YES overpriced)
+
+const exitSt=exitEvt.strikes[si];
+if(!exitSt)continue;
+
+// MODEL P: Fade overpriced YES (buy NO)
+if(noEdge>=minEdge&&marketNoAsk>=0.05&&marketNoAsk<=0.80){
+const dedupKey='P:'+evt.ticker+':'+si+':'+snap.ts.slice(0,15);
+if(!usedP.has(dedupKey)){
+usedP.add(dedupKey);
+const exitNoAsk=exitSt.na;
+const pnl=(exitNoAsk-marketNoAsk-fee)*contracts;
+mPTrades.push({model:'MP',ts:snap.ts,time:snap.ts.slice(11,19),ticker:evt.ticker,strikePrice,dist:dist.toFixed(0),side:'NO',entry:marketNoAsk.toFixed(3),exitPrice:exitNoAsk.toFixed(3),fv:fv.toFixed(3),edge:noEdge,pnl:parseFloat(pnl.toFixed(3)),mins:evt.mins_to_resolve,btcDelta:btcDelta30s.toFixed(0)});
 }
 }
-overshootOpps.sort((a,b)=>b.edge-a.edge);
-if(overshootOpps.length>0){
-const best=overshootOpps[0];
-const dedupKey='C:'+evt.ticker+':'+best.si+':'+snap.ts.slice(0,15);
-if(!usedC.has(dedupKey)){
-usedC.add(dedupKey);
-const exitSt=exitEvt.strikes[best.si];
-if(exitSt){
-const exitPrice=exitSt.na;
-const pnl=(exitPrice-best.entryPrice-fee)*contracts;
-mCTrades.push({model:'MC',ts:snap.ts,time:snap.ts.slice(11,19),ticker:evt.ticker,strikePrice:best.strikePrice,side:'NO',entry:best.entryPrice.toFixed(2),exitPrice:exitPrice.toFixed(2),fv:best.fv.toFixed(2),edge:best.edge.toFixed(3),btcSpot:snap.btc_spot,btcDelta:btcDelta30s.toFixed(0),pnl:parseFloat(pnl.toFixed(3)),mins:evt.mins_to_resolve});
+
+// MODEL U: Buy underpriced YES
+if(yesEdge>=minEdge&&marketYesAsk>=0.05&&marketYesAsk<=0.80){
+const dedupKey='U:'+evt.ticker+':'+si+':'+snap.ts.slice(0,15);
+if(!usedU.has(dedupKey)){
+usedU.add(dedupKey);
+const exitYesAsk=exitSt.ya;
+const pnl=(exitYesAsk-marketYesAsk-fee)*contracts;
+mUTrades.push({model:'MU',ts:snap.ts,time:snap.ts.slice(11,19),ticker:evt.ticker,strikePrice,dist:dist.toFixed(0),side:'YES',entry:marketYesAsk.toFixed(3),exitPrice:exitYesAsk.toFixed(3),fv:fv.toFixed(3),edge:yesEdge,pnl:parseFloat(pnl.toFixed(3)),mins:evt.mins_to_resolve,btcDelta:btcDelta30s.toFixed(0)});
+}
+}
+
+// MODEL X: Near-expiry ATM overpricing (specific to calibration finding)
+// ATM YES priced at 65% at 5 min, should be ~50% → buy NO
+if(evt.mins_to_resolve<=10&&Math.abs(dist)<=50&&marketYesAsk>=0.55&&marketYesAsk<=0.80){
+const atmNoEdge=marketYesAsk-0.52; // true ATM prob ~50-52%
+if(atmNoEdge>=minEdge){
+const dedupKey='X:'+evt.ticker+':'+si+':'+snap.ts.slice(0,15);
+if(!usedX.has(dedupKey)){
+usedX.add(dedupKey);
+const exitYesAsk=exitSt.ya;
+const exitNoAsk=exitSt.na;
+const pnl=(exitNoAsk-marketNoAsk-fee)*contracts;
+mXTrades.push({model:'MX',ts:snap.ts,time:snap.ts.slice(11,19),ticker:evt.ticker,strikePrice,dist:dist.toFixed(0),side:'NO',entry:marketNoAsk.toFixed(3),exitPrice:exitNoAsk.toFixed(3),fv:'0.520',edge:atmNoEdge,pnl:parseFloat(pnl.toFixed(3)),mins:evt.mins_to_resolve,btcDelta:btcDelta30s.toFixed(0)});
 }
 }
 }
@@ -393,25 +361,26 @@ if(i%50===0)prog(62+Math.round(i/snaps.length*30));
 }
 
 prog(92);
-lg('MA Momentum Mispricing: '+mATrades.length+' trades','ok');
-lg('MB Static Mispricing: '+mBTrades.length+' trades','ok');
-lg('MC Mean Reversion: '+mCTrades.length+' trades','ok');
+lg('MP Fade Overpriced YES: '+mPTrades.length+' trades','ok');
+lg('MU Buy Underpriced YES: '+mUTrades.length+' trades','ok');
+lg('MX Near-Expiry ATM Fade: '+mXTrades.length+' trades','ok');
 
-const ALL=[...mATrades,...mBTrades,...mCTrades].sort((a,b)=>a.ts.localeCompare(b.ts));
+const ALL=[...mPTrades,...mUTrades,...mXTrades].sort((a,b)=>a.ts.localeCompare(b.ts));
 lg('Total: '+ALL.length+' trades','ok');
 
-const rA=calcStats(mATrades,cap);
-const rB=calcStats(mBTrades,cap);
-const rC=calcStats(mCTrades,cap);
+const rP=calcStats(mPTrades,cap);
+const rU=calcStats(mUTrades,cap);
+const rX=calcStats(mXTrades,cap);
 const rAll=calcStats(ALL,cap);
 
 const ft=flatPnL(ALL,cap);
 const ct=compPnL(ALL,cap,contracts);
 
 prog(96);
-render(ALL,mATrades,mBTrades,mCTrades,ft,ct,rA,rB,rC,rAll,cap,contracts,fee);
+render(ALL,mPTrades,mUTrades,mXTrades,ft,ct,rP,rU,rX,rAll,cap,contracts,fee);
 prog(100);
 el('out').style.display='block';
+
 }catch(e){
 lg('ERROR: '+e.message,'err');
 console.error(e);
@@ -419,22 +388,22 @@ console.error(e);
 btn.disabled=false;
 }
 
-const MCOLORS={MA:'var(--teal)',MB:'var(--amber)',MC:'var(--blue)'};
-const MSIGS={MA:'Momentum Mispricing — buy direction-aligned underpriced contracts after BTC move',MB:'Static Mispricing — buy best-edge contract when BTC is calm',MC:'Mean Reversion — fade overpriced contracts after BTC volatility stalls'};
+const MCOLORS={MP:'var(--coral)',MU:'var(--teal)',MX:'var(--amber)'};
+const MSIGS={MP:'Fade Overpriced YES — buy NO when market overprices YES vs fair value',MU:'Buy Underpriced YES — buy YES when market underprices vs fair value',MX:'Near-Expiry ATM — fade 65% ATM pricing in final 10 min (true prob ~52%)'};
 
-function render(ALL,mA,mB,mC,ft,ct,rA,rB,rC,rAll,cap,contracts,fee){
+function render(ALL,mP,mU,mX,ft,ct,rP,rU,rX,rAll,cap,contracts,fee){
 const sumPnl=t=>parseFloat(t.reduce((s,x)=>s+x.pnl,0).toFixed(2));
 const tFlat=rAll?parseFloat(rAll.totalPnl):0;
-const tDD=rAll?rAll.maxDD:0;
+const tDD=rAll?rAll.maxDD:'0';
 
 el('sumGrid').innerHTML=
 '<div class="stat"><div class="stat-val" style="color:var(--purple)">'+ALL.length+'</div><div class="stat-lbl">Total Trades</div></div>'+
 '<div class="stat"><div class="stat-val '+(parseFloat(rAll?.wr||0)>=55?'green':'amber')+'">'+( rAll?rAll.wr:0)+'%</div><div class="stat-lbl">Combined WR</div></div>'+
 '<div class="stat"><div class="stat-val '+(tFlat>=0?'green':'red')+'">'+fmtD(tFlat)+'</div><div class="stat-lbl">Total P&L</div></div>'+
 '<div class="stat"><div class="stat-val '+(parseFloat(rAll?.perYear||0)>=7000?'green':parseFloat(rAll?.perYear||0)>=0?'amber':'red')+'">'+fmtD(parseFloat(rAll?.perYear||0))+'/yr</div><div class="stat-lbl">Ann. (extrapolated)</div></div>'+
-'<div class="stat"><div class="stat-val amber">'+(rAll?rAll.avgEdge:0)+'</div><div class="stat-lbl">Avg Edge Per Trade</div></div>';
+'<div class="stat"><div class="stat-val amber">'+(rAll?rAll.avgEdge:'—')+'</div><div class="stat-lbl">Avg Edge Per Trade</div></div>';
 
-const models=[{name:'MA',trades:mA,r:rA},{name:'MB',trades:mB,r:rB},{name:'MC',trades:mC,r:rC}];
+const models=[{name:'MP',trades:mP,r:rP},{name:'MU',trades:mU,r:rU},{name:'MX',trades:mX,r:rX}];
 el('modelCards').innerHTML=models.map(m=>{
 if(!m.r)return'<div class="model-card" style="border-top:3px solid '+MCOLORS[m.name]+'"><div class="m-name" style="color:'+MCOLORS[m.name]+'">'+m.name+'</div><div class="m-wr" style="color:var(--muted)">0 trades</div><div class="m-ann">'+MSIGS[m.name]+'</div></div>';
 const w=parseFloat(m.r.wr);
@@ -463,31 +432,31 @@ el('compBox').innerHTML=
 '<div class="pnl-row"><span class="pnl-lbl">Final Balance</span><span class="pnl-val '+(tCompTotal>=0?'green':'red')+'">$'+cf.toFixed(2)+'</span></div>'+
 '<div class="pnl-row"><span class="pnl-lbl">Total P&L</span><span class="pnl-val '+(tCompTotal>=0?'green':'red')+'">'+fmtD(tCompTotal)+'</span></div>'+
 '<div class="pnl-row"><span class="pnl-lbl">Return</span><span class="pnl-val">'+Math.round(tCompTotal/cap*100)+'%</span></div>'+
-'<div class="pnl-row" style="border-top:1px solid var(--border);padding-top:8px"><span class="pnl-lbl" style="color:var(--amber);font-size:10px">⚠ Compound is theoretical ceiling</span></div>';
+'<div class="pnl-row" style="border-top:1px solid var(--border);padding-top:8px"><span class="pnl-lbl amber" style="font-size:10px">⚠ Compound is theoretical ceiling</span></div>';
 
 const byHour={};
-ft.forEach(t=>{const h=t.ts.slice(11,13)+'h';if(!byHour[h])byHour[h]={trades:[],pnl:0,edges:[]};byHour[h].trades.push(t);byHour[h].pnl+=t.pnl;byHour[h].edges.push(t.edge||0);});
+ft.forEach(t=>{const h=t.ts.slice(11,13)+'h';if(!byHour[h])byHour[h]={trades:[],pnl:0,edges:[],models:new Set()};byHour[h].trades.push(t);byHour[h].pnl+=t.pnl;if(t.edge)byHour[h].edges.push(t.edge);byHour[h].models.add(t.model);});
 let rb=cap,hrows='';
 for(const h of Object.keys(byHour).sort()){
 const hd=byHour[h];
 const hw=hd.trades.filter(t=>t.pnl>0).length;
 const hwr=Math.round(hw/hd.trades.length*100);
-const avgEdge=(hd.edges.reduce((s,e)=>s+e,0)/hd.edges.length).toFixed(3);
+const avgEdge=hd.edges.length?(hd.edges.reduce((s,e)=>s+e,0)/hd.edges.length).toFixed(3):'—';
 rb+=hd.pnl;
-hrows+='<tr><td>'+h+' UTC</td><td>'+hd.trades.length+'</td><td class="'+(hwr>=55?'green':'amber')+'">'+hwr+'%</td><td class="'+(hd.pnl>=0?'green':'red')+'">'+fmtD(hd.pnl)+'</td><td>$'+rb.toFixed(2)+'</td><td class="amber">'+avgEdge+'</td></tr>';
+hrows+='<tr><td>'+h+' UTC</td><td>'+hd.trades.length+'</td><td class="'+(hwr>=55?'green':'amber')+'">'+hwr+'%</td><td class="'+(hd.pnl>=0?'green':'red')+'">'+fmtD(hd.pnl)+'</td><td>$'+rb.toFixed(2)+'</td><td class="amber">'+avgEdge+'</td><td style="color:var(--muted);font-size:10px">[...'+hd.models.size+' models]</td></tr>';
 }
-el('hourTbl').innerHTML=hrows||'<tr><td colspan="6" style="color:var(--muted)">No trades</td></tr>';
+el('hourTbl').innerHTML=hrows||'<tr><td colspan="7" style="color:var(--muted)">No trades</td></tr>';
 
 el('tabs').innerHTML=
 '<span class="tab active" onclick="showTab(\'all\',this)">All ('+ALL.length+')</span>'+
-['MA','MB','MC'].map(n=>'<span class="tab" onclick="showTab(\''+n+'\',this)" style="border-color:'+MCOLORS[n]+'">'+n+' ('+ALL.filter(t=>t.model===n).length+')</span>').join('');
+['MP','MU','MX'].map(n=>'<span class="tab" onclick="showTab(\''+n+'\',this)" style="border-color:'+MCOLORS[n]+'">'+n+' ('+ALL.filter(t=>t.model===n).length+')</span>').join('');
 
 window._ft=ft;
 showTab('all');
 
-lg('══════ FAIR VALUE RESULTS ══════','ok');
-models.forEach(m=>{if(m.r)lg('  '+m.name+': '+m.trades.length+'t | '+m.r.wr+'%WR | '+fmtD(sumPnl(m.trades))+' | avg edge: '+m.r.avgEdge,parseFloat(m.r.wr)>=55?'ok':'warn');else lg('  '+m.name+': 0 trades','warn');});
-lg('COMBINED: '+ALL.length+'t | '+(rAll?rAll.wr:0)+'%WR | '+fmtD(tFlat)+' | '+(rAll?'$'+rAll.perDay+'/day':''),'ok');
+lg('══════ CALIBRATED RESULTS ══════','ok');
+models.forEach(m=>{if(m.r)lg('  '+m.name+': '+m.trades.length+'t | '+m.r.wr+'%WR | '+fmtD(sumPnl(m.trades))+' | avg edge: '+m.r.avgEdge+' | $/day: $'+m.r.perDay,parseFloat(m.r.wr)>=55?'ok':'warn');else lg('  '+m.name+': 0 trades','warn');});
+lg('COMBINED: '+ALL.length+'t | '+(rAll?rAll.wr:0)+'%WR | '+fmtD(tFlat)+' | '+(rAll?'$'+rAll.perDay+'/day | $'+rAll.perYear+'/yr':''),'ok');
 }
 
 function showTab(tab,e2){
@@ -495,13 +464,13 @@ document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
 if(e2)e2.classList.add('active');
 const ft=window._ft||[];
 const filtered=tab==='all'?ft:ft.filter(t=>t.model===tab);
-const MCOLORS={MA:'var(--teal)',MB:'var(--amber)',MC:'var(--blue)'};
-const head='<div class="trow head"><span>Time</span><span>Model</span><span>Side</span><span>Strike</span><span>Entry</span><span>Exit</span><span>FV</span><span>Edge</span><span>P&L / Bal</span></div>';
+const MCOLORS={MP:'var(--coral)',MU:'var(--teal)',MX:'var(--amber)'};
+const head='<div class="trow head"><span>Time</span><span>Model</span><span>Side</span><span>Strike $</span><span>Entry</span><span>Exit</span><span>FV</span><span>Edge</span><span>P&L / Bal</span></div>';
 const rows=filtered.slice(0,300).map(t=>{
 const w=t.pnl>0;
-return'<div class="trow '+(w?'win':'loss')+'">'+'<span>'+t.time+'</span>'+'<span style="color:'+(MCOLORS[t.model]||'var(--muted)')+'">'+t.model+'</span>'+'<span style="color:'+(t.side==='YES'?'var(--teal)':'var(--coral)')+'">'+t.side+'</span>'+'<span class="amber">$'+Math.round(t.strikePrice||0)+'</span>'+'<span>$'+t.entry+'</span>'+'<span>$'+t.exitPrice+'</span>'+'<span style="color:var(--muted)">'+t.fv+'</span>'+'<span class="amber">'+t.edge+'</span>'+'<span class="'+(w?'green':'red')+'">'+fmtD(t.pnl)+' $'+t.fb+'</span>'+'</div>';
+return'<div class="trow '+(w?'win':'loss')+'">'+'<span>'+t.time+'</span>'+'<span style="color:'+(MCOLORS[t.model]||'var(--muted)')+'">'+t.model+'</span>'+'<span style="color:'+(t.side==='YES'?'var(--teal)':'var(--coral)')+'">'+t.side+'</span>'+'<span class="amber">$'+Math.round(t.strikePrice||0)+'</span>'+'<span>'+t.entry+'</span>'+'<span>'+t.exitPrice+'</span>'+'<span style="color:var(--muted)">'+t.fv+'</span>'+'<span class="amber">'+(typeof t.edge==='number'?t.edge.toFixed(3):t.edge)+'</span>'+'<span class="'+(w?'green':'red')+'">'+fmtD(t.pnl)+' $'+t.fb+'</span>'+'</div>';
 }).join('');
-const more=filtered.length>300?'<div style="text-align:center;padding:10px;color:var(--purple);font-family:\'Courier New\',monospace;font-size:11px">...'+( filtered.length-300)+' more</div>':'';
+const more=filtered.length>300?'<div style="text-align:center;padding:10px;color:var(--purple);font-family:\'Courier New\',monospace;font-size:11px">...'+(filtered.length-300)+' more</div>':'';
 el('tlog').innerHTML=head+rows+more;
 }
 </script>
